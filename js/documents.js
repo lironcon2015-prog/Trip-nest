@@ -92,12 +92,18 @@ const Documents = (() => {
 
   /* --- add flow (file / camera) --- */
   function addFlow(trip, { capture = false } = {}) {
+    document.getElementById('tn-doc-input')?.remove();
     const input = document.createElement('input');
     input.type = 'file';
+    input.id = 'tn-doc-input';
     input.accept = capture ? 'image/*' : 'application/pdf,image/*,.eml,text/*';
     if (capture) input.capture = 'environment'; else input.multiple = true;
+    // attached to the DOM — iOS Safari can GC a detached input before 'change' fires
+    input.style.display = 'none';
+    document.body.appendChild(input);
     input.addEventListener('change', async () => {
       const files = [...input.files];
+      input.remove();
       if (!files.length) return;
       const docs = [];
       for (const f of files) {

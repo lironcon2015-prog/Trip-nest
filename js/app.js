@@ -22,9 +22,11 @@ const App = (() => {
 
   /* ---------- home ---------- */
   const Home = {
+    next: null, // cached so quick actions can run synchronously inside the tap gesture (iOS file picker)
     async render() {
       await Members.strip('home-family');
       const next = await Itinerary.nextTrip();
+      this.next = next;
       await this.renderHero(next);
       await this.renderTravelDay(next);
       await this.renderAlerts(next);
@@ -106,6 +108,12 @@ const App = (() => {
 
   /* ---------- quick actions ---------- */
   async function quickAction(action) {
+    // 'scan' must open the file picker synchronously within the tap gesture —
+    // an await before input.click() makes iOS Safari swallow it silently
+    if (action === 'scan') {
+      const t = Home.next?.trip;
+      if (t) { Documents.addFlow(t, { capture: true }); return; }
+    }
     const next = await Itinerary.nextTrip();
     const needTrip = async () => {
       if (next) return next.trip;
