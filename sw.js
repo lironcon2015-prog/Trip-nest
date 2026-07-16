@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.2.0';
+const CACHE_VERSION = '1.3.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -16,6 +16,11 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
 });
 
+// the app's update banner asks the new SW to take over immediately
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -28,6 +33,12 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (BYPASS.some(h => url.hostname.endsWith(h))) return;
+
+  // version.json: network-first so update checks always see the latest version
+  if (url.origin === location.origin && url.pathname.endsWith('/version.json')) {
+    e.respondWith(fetch(e.request).catch(() => caches.match('./version.json')));
+    return;
+  }
 
   // app shell: cache-first (version bump busts it); CDN assets: cache falling back to network
   e.respondWith(

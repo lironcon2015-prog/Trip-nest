@@ -96,7 +96,10 @@ const Settings = (() => {
         </div>
       </section>
 
-      <div class="text-center text-[11px] text-slate-300 pb-4">המזוודה · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>`;
+      <div class="text-center pb-4">
+        <div class="text-[11px] text-slate-300">המזוודה · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>
+        <button id="st-check-update" class="text-[11px] text-indigo-400 font-medium mt-1.5">🔄 בדיקת עדכון גרסה</button>
+      </div>`;
 
     /* wiring */
     const saveBridgeInputs = async () => {
@@ -207,6 +210,12 @@ const Settings = (() => {
       </button>`).join('') : '<p class="text-xs text-slate-400">אין עדיין בני משפחה</p>';
     document.querySelectorAll('.st-member').forEach(b => b.addEventListener('click', () => Members.openProfile(b.dataset.id)));
     document.getElementById('st-add-member').addEventListener('click', () => Members.editModal());
+
+    /* updates */
+    document.getElementById('st-check-update').addEventListener('click', (e) => {
+      e.target.textContent = '🔄 בודק…';
+      App.checkForUpdate().finally(() => { e.target.textContent = '🔄 בדיקת עדכון גרסה'; });
+    });
 
     /* vault + backup */
     document.getElementById('st-vault-pin').addEventListener('click', Vault.setPin);

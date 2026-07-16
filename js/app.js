@@ -125,6 +125,81 @@ const App = (() => {
     }
   }
 
+  /* ---------- app updates (service worker + version.json) ---------- */
+  const Updater = {
+    reg: null,
+    waiting: null,
+
+    async init() {
+      if (!('serviceWorker' in navigator)) return;
+      try { this.reg = await navigator.serviceWorker.register('./sw.js'); }
+      catch (e) { console.warn('SW registration failed', e); return; }
+
+      // גרסה חדשה שכבר הותקנה ברקע ומחכה מהפעם הקודמת
+      if (this.reg.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
+
+      this.reg.addEventListener('updatefound', () => {
+        const w = this.reg.installing;
+        if (!w) return;
+        w.addEventListener('statechange', () => {
+          // controller קיים = זה עדכון ולא התקנה ראשונה
+          if (w.state === 'installed' && navigator.serviceWorker.controller) this.prompt(w);
+        });
+      });
+
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloading) return;
+        reloading = true;
+        location.reload();
+      });
+
+      this.check();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.check();
+      });
+    },
+
+    // reg.update() מוריד sw.js חדש אם השתנה; version.json נותן מספר גרסה להצגה
+    async check({ manual = false } = {}) {
+      try { await this.reg?.update(); } catch { }
+      let remote = null;
+      try {
+        const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+        remote = (await res.json()).version;
+      } catch { }
+      const current = window._BUNDLE_VERSION || '';
+      if (manual) {
+        if (this.waiting) this.prompt(this.waiting);
+        else if (remote && remote !== current) UI.toast(`גרסה ${remote} נמצאה — מוריד ברקע, עוד רגע יופיע כפתור עדכון`, 'info');
+        else UI.toast(`אתם על הגרסה האחרונה (v${current}) ✓`, 'success');
+      }
+      return { current, remote };
+    },
+
+    prompt(worker) {
+      this.waiting = worker;
+      if (document.getElementById('update-banner')) return;
+      const el = document.createElement('div');
+      el.id = 'update-banner';
+      el.className = 'fixed top-0 left-0 right-0 z-[60] px-4 pt-safe';
+      el.innerHTML = `
+        <div class="max-w-lg mx-auto mt-3 bg-indigo-600 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
+          <span class="text-xl">🚀</span>
+          <span class="text-sm font-medium flex-1">גרסה חדשה של המזוודה מוכנה</span>
+          <button id="update-now" class="bg-white text-indigo-600 text-xs font-bold px-3.5 py-2 rounded-xl active:scale-95">עדכון</button>
+          <button id="update-later" class="text-white/70 text-xs px-1">אחר-כך</button>
+        </div>`;
+      document.body.appendChild(el);
+      document.getElementById('update-now').addEventListener('click', (e) => {
+        e.target.textContent = 'מעדכן…';
+        e.target.disabled = true;
+        worker.postMessage({ type: 'SKIP_WAITING' }); // controllerchange יטען מחדש
+      });
+      document.getElementById('update-later').addEventListener('click', () => el.remove());
+    },
+  };
+
   /* ---------- bootstrap ---------- */
   async function init() {
     await DB.init();
@@ -152,10 +227,8 @@ const App = (() => {
       dot.className = 'w-2 h-2 rounded-full ' + (e.detail === 'start' ? 'bg-amber-400 animate-pulse' : e.detail === 'error' ? 'bg-red-400' : 'bg-emerald-400');
     });
 
-    // service worker
-    if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('./sw.js'); } catch (e) { console.warn('SW registration failed', e); }
-    }
+    // service worker + update detection
+    await Updater.init();
 
     // background sync on load + when returning to the app
     G.Sync.run({ silent: true });
@@ -165,6 +238,6 @@ const App = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { navigate, refresh };
+  return { navigate, refresh, checkForUpdate: () => Updater.check({ manual: true }) };
 })();
 window.App = App;
