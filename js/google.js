@@ -12,16 +12,24 @@ const G = (() => {
     'hotel', 'itinerary', 'voucher', 'check-in', 'travel insurance', 'car rental', 'visa',
   ];
 
-  /* --- bridge transport --- */
+  /* --- bridge transport ---
+     'me'      — הגשר בחשבון שלי (bridgeUrl/bridgeToken)
+     'partner' — הגשר בחשבון של בן/בת הזוג (partnerBridgeUrl/partnerBridgeToken),
+                 משמש רק לסריקת Gmail כדי שכל סריקה תכסה את שתי התיבות. */
   const isConfigured = async () =>
     !!(await DB.settings.get('bridgeUrl')) && !!(await DB.settings.get('bridgeToken'));
+  const hasPartnerBridge = async () =>
+    !!(await DB.settings.get('partnerBridgeUrl')) && !!(await DB.settings.get('partnerBridgeToken'));
 
   // POST כ-simple request (בלי headers) כדי לא להפעיל CORS preflight שהגשר לא עונה לו
-  async function call(action, params = {}) {
-    const [url, token] = await Promise.all([
-      DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
-    ]);
-    if (!url || !token) throw new Error('הגשר לא הוגדר — הדביקו כתובת וטוקן בהגדרות');
+  async function call(action, params = {}, { account = 'me' } = {}) {
+    const keys = account === 'partner' ? ['partnerBridgeUrl', 'partnerBridgeToken'] : ['bridgeUrl', 'bridgeToken'];
+    const [url, token] = await Promise.all(keys.map(k => DB.settings.get(k)));
+    if (!url || !token) {
+      throw new Error(account === 'partner'
+        ? 'הגשר של בן/בת הזוג לא הוגדר — הדביקו כתובת וטוקן בהגדרות'
+        : 'הגשר לא הוגדר — הדביקו כתובת וטוקן בהגדרות');
+    }
     let res;
     try {
       res = await fetch(url, { method: 'POST', body: JSON.stringify({ token, action, ...params }) });
@@ -35,7 +43,7 @@ const G = (() => {
     return data;
   }
 
-  const ping = () => call('ping'); // → { email, version }
+  const ping = ({ account = 'me' } = {}) => call('ping', {}, { account }); // → { email, version }
 
   /* --- base64 helpers --- */
   const b64ToBlob = (data, mime = 'application/octet-stream') => {
@@ -156,23 +164,46 @@ const G = (() => {
       if (!after && !before) q += ` newer_than:${newerDays}d`;
       return q;
     },
+    // מזהי הודעות מהתיבה של בן/בת הזוג מקבלים קידומת 'p:' — כך getFull/getAttachment
+    // יודעים לאיזה גשר לפנות בלי שמודול המסמכים יצטרך להכיר שתי תיבות.
+    _route(id) {
+      return String(id).startsWith('p:')
+        ? { id: String(id).slice(2), account: 'partner' }
+        : { id, account: 'me' };
+    },
     async search(q, max = 25) {
-      return (await call('gmailSearch', { q, max })).messages || [];
+      const jobs = [
+        call('gmailSearch', { q, max })
+          .then(out => (out.messages || []).map(m => ({ ...m, mailbox: 'me' }))),
+      ];
+      if (await hasPartnerBridge()) {
+        jobs.push(call('gmailSearch', { q, max }, { account: 'partner' })
+          .then(out => (out.messages || []).map(m => ({ ...m, id: 'p:' + m.id, mailbox: 'partner' })))
+          .catch(e => {
+            console.warn('partner mailbox scan failed', e);
+            UI.toast('התיבה של בן/בת הזוג לא נסרקה: ' + e.message, 'warning');
+            return [];
+          }));
+      }
+      const results = (await Promise.all(jobs)).flat();
+      return results.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     },
     // הגשר כבר מפרק את המייל — payload הוא { text, html, attachments }
     async getFull(id) {
-      const out = await call('gmailGet', { id });
+      const r = this._route(id);
+      const out = await call('gmailGet', { id: r.id }, { account: r.account });
       return { id, payload: { text: out.text || '', html: out.html || '', attachments: out.attachments || [] } };
     },
     walkParts(payload) {
       return payload || { attachments: [], text: '', html: '' };
     },
     async getAttachment(msgId, att) {
-      const out = await call('gmailAttachment', { id: msgId, index: att.attachmentId });
+      const r = this._route(msgId);
+      const out = await call('gmailAttachment', { id: r.id, index: att.attachmentId }, { account: r.account });
       return b64ToBlob(out.data, out.mimeType || att.mimeType);
     },
   };
 
-  return { isConfigured, ping, call, setup, drive, Sync, gmail, DEFAULT_KEYWORDS };
+  return { isConfigured, hasPartnerBridge, ping, call, setup, drive, Sync, gmail, DEFAULT_KEYWORDS };
 })();
 window.G = G;

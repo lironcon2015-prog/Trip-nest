@@ -8,9 +8,11 @@ import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/* ---------- mock bridge (in-memory Apps Script) ---------- */
+/* ---------- mock bridges (in-memory Apps Script, one per partner) ---------- */
 const BRIDGE_URL = 'https://script.google.com/macros/s/MOCK/exec';
 const TOKEN = 'test-secret-token';
+const PARTNER_URL = 'https://script.google.com/macros/s/MOCK-PARTNER/exec';
+const PARTNER_TOKEN = 'partner-secret-token';
 
 const bridgeState = {
   email: 'liron@example.com',
@@ -30,12 +32,24 @@ const bridgeState = {
     },
   },
 };
+const partnerState = {
+  email: 'partner@example.com',
+  folders: {}, files: {}, nextId: 1000,
+  messages: {
+    'pmsg-1': {
+      from: 'ISSTA <deals@issta.co.il>', subject: 'שובר מלון — סנטוריני',
+      date: '2026-07-03T08:00:00.000Z', text: 'שובר מספר XYZ789', html: '<p>שובר XYZ789</p>',
+      attachments: [{ filename: 'voucher.pdf', mimeType: 'application/pdf', bytes: 'PARTNER-VOUCHER' }],
+    },
+  },
+};
+let partnerDown = false; // סימולציה של גשר שני שלא זמין
+
 const nid = (p) => p + bridgeState.nextId++;
 const b64 = (s) => Buffer.from(s, 'utf-8').toString('base64');
 
-function bridge(req) {
-  if (req.token !== TOKEN) return { ok: false, error: 'bad token' };
-  const S = bridgeState;
+function bridge(req, S = bridgeState, token = TOKEN) {
+  if (req.token !== token) return { ok: false, error: 'bad token' };
   try {
     switch (req.action) {
       case 'ping':
@@ -100,8 +114,14 @@ function bridge(req) {
 }
 
 globalThis.fetch = async (url, opts = {}) => {
-  if (!String(url).startsWith(BRIDGE_URL)) throw new Error('unexpected fetch: ' + url);
-  const body = bridge(JSON.parse(opts.body));
+  const req = JSON.parse(opts.body);
+  let body;
+  if (String(url).startsWith(PARTNER_URL)) {
+    if (partnerDown) throw new TypeError('fetch failed');
+    body = bridge(req, partnerState, PARTNER_TOKEN);
+  } else if (String(url).startsWith(BRIDGE_URL)) {
+    body = bridge(req);
+  } else throw new Error('unexpected fetch: ' + url);
   return { ok: true, status: 200, json: async () => body };
 };
 
@@ -217,7 +237,8 @@ await test('סריקת Gmail לפי מילות מפתח', async () => {
   assert(q.includes('"טיסה"') && q.includes('after:2026/06/01'), 'bad query: ' + q);
   const results = await G.gmail.search(q);
   assert(results.length === 2, 'expected 2 messages, got ' + results.length);
-  assert(results[0].subject.includes('אתונה'), 'wrong subject');
+  assert(results.some(r => r.subject.includes('אתונה')), 'wrong subject');
+  assert(results.every(r => r.mailbox === 'me'), 'partner not configured yet — all results must be mine');
 });
 
 await test('ייבוא מייל: גוף + קובץ מצורף', async () => {
@@ -228,6 +249,36 @@ await test('ייבוא מייל: גוף + קובץ מצורף', async () => {
   const blob = await G.gmail.getAttachment('msg-1', parts.attachments[0]);
   assert(blob instanceof Blob && blob.type === 'application/pdf', 'attachment blob wrong');
   assert((await blob.text()) === 'PDF-BYTES', 'attachment content wrong');
+});
+
+await test('סריקה כפולה: שתי התיבות ממוזגות וממוינות לפי תאריך', async () => {
+  await DB.settings.set('partnerBridgeUrl', PARTNER_URL);
+  await DB.settings.set('partnerBridgeToken', PARTNER_TOKEN);
+  assert(await G.hasPartnerBridge(), 'partner bridge should be configured');
+  const out = await G.ping({ account: 'partner' });
+  assert(out.email === 'partner@example.com', 'partner ping wrong: ' + out.email);
+
+  const results = await G.gmail.search('anything');
+  assert(results.length === 3, 'expected 3 messages from both mailboxes, got ' + results.length);
+  assert(results[0].subject.includes('סנטוריני') && results[0].mailbox === 'partner', 'newest (partner) message must be first');
+  assert(results[0].id.startsWith('p:'), 'partner message id must carry p: prefix');
+  assert(results.filter(r => r.mailbox === 'me').length === 2, 'own messages missing');
+});
+
+await test('ייבוא מהתיבה של בן/בת הזוג מנותב לגשר הנכון', async () => {
+  const full = await G.gmail.getFull('p:pmsg-1');
+  const parts = G.gmail.walkParts(full.payload);
+  assert(parts.text.includes('XYZ789'), 'partner body missing');
+  assert(parts.attachments[0].filename === 'voucher.pdf', 'partner attachment meta wrong');
+  const blob = await G.gmail.getAttachment('p:pmsg-1', parts.attachments[0]);
+  assert((await blob.text()) === 'PARTNER-VOUCHER', 'partner attachment content wrong');
+});
+
+await test('גשר של בן/בת הזוג לא זמין — הסריקה עדיין מחזירה את התיבה שלי', async () => {
+  partnerDown = true;
+  const results = await G.gmail.search('anything');
+  partnerDown = false;
+  assert(results.length === 2 && results.every(r => r.mailbox === 'me'), 'own results must survive partner outage');
 });
 
 await test('סנכרון מלא: העלאת מסמך + db.json, ומשיכה חזרה', async () => {

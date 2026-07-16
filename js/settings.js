@@ -4,8 +4,9 @@ const Settings = (() => {
 
   async function render() {
     const el = document.getElementById('settings-body');
-    const [bridgeUrl, bridgeToken, folderId, folderName, geminiKey, persona, lastSync] = await Promise.all([
+    const [bridgeUrl, bridgeToken, partnerUrl, partnerToken, folderId, folderName, geminiKey, persona, lastSync] = await Promise.all([
       DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
+      DB.settings.get('partnerBridgeUrl'), DB.settings.get('partnerBridgeToken'),
       DB.settings.get('driveFolderId'), DB.settings.get('driveFolderName'),
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
     ]);
@@ -24,6 +25,15 @@ const Settings = (() => {
           <div class="flex gap-2">
             <button id="st-save-bridge" class="tn-btn-secondary flex-1">שמירה</button>
             <button id="st-ping-bridge" class="tn-btn-secondary flex-1">🔌 בדיקת חיבור</button>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-3">
+            <div class="text-xs font-medium text-slate-600 mb-1">💞 הגשר של בן/בת הזוג</div>
+            <p class="text-[11px] text-slate-400 mb-2">כדי שכל סריקת מייל תכסה את שתי התיבות — הדביקו כאן את כתובת הגשר והטוקן מהמכשיר של בן/בת הזוג.</p>
+            <div class="space-y-2">
+              <input id="st-partner-url" class="tn-input text-xs" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="${UI.esc(partnerUrl || '')}">
+              <input id="st-partner-token" type="password" class="tn-input text-xs" dir="ltr" placeholder="הטוקן של הגשר שלו/שלה" value="${UI.esc(partnerToken || '')}">
+              <button id="st-ping-partner" class="tn-btn-secondary w-full !text-xs">🔌 בדיקת חיבור לתיבה השנייה</button>
+            </div>
           </div>
           <div class="bg-slate-50 rounded-xl p-3 text-sm">
             <div class="flex items-center justify-between">
@@ -89,18 +99,31 @@ const Settings = (() => {
       <div class="text-center text-[11px] text-slate-300 pb-4">המזוודה · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>`;
 
     /* wiring */
-    document.getElementById('st-save-bridge').addEventListener('click', async () => {
+    const saveBridgeInputs = async () => {
       await DB.settings.set('bridgeUrl', document.getElementById('st-bridge-url').value.trim());
       await DB.settings.set('bridgeToken', document.getElementById('st-bridge-token').value.trim());
+      await DB.settings.set('partnerBridgeUrl', document.getElementById('st-partner-url').value.trim());
+      await DB.settings.set('partnerBridgeToken', document.getElementById('st-partner-token').value.trim());
+    };
+
+    document.getElementById('st-save-bridge').addEventListener('click', async () => {
+      await saveBridgeInputs();
       UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
 
     document.getElementById('st-ping-bridge').addEventListener('click', async () => {
       try {
-        await DB.settings.set('bridgeUrl', document.getElementById('st-bridge-url').value.trim());
-        await DB.settings.set('bridgeToken', document.getElementById('st-bridge-token').value.trim());
+        await saveBridgeInputs();
         const out = await G.ping();
         UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    });
+
+    document.getElementById('st-ping-partner').addEventListener('click', async () => {
+      try {
+        await saveBridgeInputs();
+        const out = await G.ping({ account: 'partner' });
+        UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
     });
 

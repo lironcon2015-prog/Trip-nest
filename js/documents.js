@@ -194,11 +194,14 @@ const Documents = (() => {
   /* --- Gmail import --- */
   async function emailImport(trip) {
     const keywords = await G.gmail.keywords();
+    const both = await G.hasPartnerBridge();
     UI.openModal({
       title: '✉️ ייבוא מהמייל',
       confirmLabel: 'סריקה',
       bodyHTML: `
-        <p class="text-xs text-slate-500 mb-3">סורק את תיבת ה-Gmail של המשתמש המחובר לפי מילות המפתח המשותפות (ניתן לערוך בהגדרות).</p>
+        <p class="text-xs text-slate-500 mb-3">${both
+          ? 'סורק את תיבות ה-Gmail של שניכם לפי מילות המפתח המשותפות (ניתן לערוך בהגדרות).'
+          : 'סורק את תיבת ה-Gmail שלך לפי מילות המפתח המשותפות. כדי לסרוק גם את התיבה של בן/בת הזוג — הוסיפו את הגשר שלו/שלה בהגדרות.'}</p>
         <div class="flex flex-wrap gap-1.5 mb-4">${keywords.slice(0, 12).map(k => `<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">${UI.esc(k)}</span>`).join('')}${keywords.length > 12 ? `<span class="text-[10px] text-slate-400">+${keywords.length - 12}</span>` : ''}</div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="tn-label">מתאריך</label><input id="ei-after" type="date" class="tn-input" value="${defaultAfter(trip)}"></div>
@@ -234,7 +237,7 @@ const Documents = (() => {
         <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3">
           <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}">
           <span class="min-w-0 text-sm">
-            <b class="block truncate">${UI.esc(r.subject || '(ללא נושא)')}</b>
+            <b class="block truncate">${r.mailbox === 'partner' ? '<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle">התיבה של בן/בת הזוג</span>' : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
             <span class="block text-xs text-slate-400 truncate">${UI.esc(r.from)}</span>
             <span class="block text-[11px] text-slate-400 mt-0.5">${UI.esc((r.snippet || '').slice(0, 90))}…</span>
           </span>
@@ -252,7 +255,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: att.filename, mimeType: att.mimeType, size: blob.size,
               blob, category: guessCategory(att.filename), source: 'email',
-              emailMeta: { subject: r.subject, from: r.from },
+              emailMeta: { subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
             }));
             files++;
           }
@@ -262,7 +265,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: `${(r.subject || 'email').slice(0, 60)}.html`, mimeType: 'text/html',
               size: blob.size, blob, category: 'other', source: 'email',
-              emailMeta: { subject: r.subject, from: r.from },
+              emailMeta: { subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
             }));
             files++;
           }
