@@ -261,6 +261,14 @@ await test('סריקת Gmail לפי מילות מפתח', async () => {
   assert(results.every(r => r.mailbox === 'me'), 'partner not configured yet — all results must be mine');
 });
 
+await test('שאילתת חיפוש: חד-פעמי + רק עם קבצים מצורפים', async () => {
+  const q = G.gmail.buildQuery(['ryanair'], { after: '2026-06-01', attachmentsOnly: true });
+  assert(q.includes('"ryanair"'), 'ad-hoc keyword missing: ' + q);
+  assert(q.includes('has:attachment'), 'attachment filter missing: ' + q);
+  const q2 = G.gmail.buildQuery(['טיסה'], { after: '2026-06-01' });
+  assert(!q2.includes('has:attachment'), 'attachment filter must be opt-in');
+});
+
 await test('ייבוא מייל: גוף + קובץ מצורף', async () => {
   const full = await G.gmail.getFull('msg-1');
   const parts = G.gmail.walkParts(full.payload);

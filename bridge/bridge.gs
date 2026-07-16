@@ -1,4 +1,4 @@
-/* TripNest — Google Apps Script bridge  (v1.1.0)
+/* TripNest — Google Apps Script bridge  (v1.2.0)
    ------------------------------------------------
    הגשר רץ בחשבון Google שלכם ומחליף את OAuth/Cloud Console:
    האפליקציה שולחת אליו בקשות, והוא ניגש ל-Drive ול-Gmail בשמכם.
@@ -16,7 +16,7 @@
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.1.0';
+const BRIDGE_VERSION = '1.2.0';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -171,16 +171,23 @@ function gmailSearch(req) {
   const threads = GmailApp.search(req.q || '', 0, max);
   const out = [];
   for (const t of threads) {
-    for (const m of t.getMessages()) {
-      out.push({
-        id: m.getId(),
-        from: m.getFrom(),
-        subject: m.getSubject(),
-        date: m.getDate().toISOString(),
-        snippet: (m.getPlainBody() || '').replace(/\s+/g, ' ').slice(0, 140),
-      });
-      if (out.length >= max) return { messages: out };
+    // one result per thread: the newest message carrying attachments,
+    // otherwise the newest message — long threads no longer flood the list
+    const msgs = t.getMessages();
+    let m = msgs[msgs.length - 1], atts = 0;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const n = msgs[i].getAttachments({ includeInlineImages: false, includeAttachments: true }).length;
+      if (n) { m = msgs[i]; atts = n; break; }
     }
+    out.push({
+      id: m.getId(),
+      from: m.getFrom(),
+      subject: m.getSubject(),
+      date: m.getDate().toISOString(),
+      snippet: (m.getPlainBody() || '').replace(/\s+/g, ' ').slice(0, 140),
+      attachments: atts,
+    });
+    if (out.length >= max) break;
   }
   return { messages: out };
 }

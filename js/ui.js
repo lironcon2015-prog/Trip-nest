@@ -95,7 +95,9 @@ const UI = (() => {
 
   /* --- modal --- */
   let _onConfirm = null;
+  let _modalGen = 0; // bumped per openModal so a confirm that replaces the modal keeps the new label
   function openModal({ title, bodyHTML = '', confirmLabel = 'שמירה', onConfirm = null, hideConfirm = false, danger = false }) {
+    _modalGen++;
     document.getElementById('modal-title').textContent = title || '';
     document.getElementById('modal-body').innerHTML = bodyHTML;
     const btn = document.getElementById('modal-confirm');
@@ -230,11 +232,11 @@ const UI = (() => {
     document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target.id === 'modal-overlay') closeModal(); });
     document.getElementById('modal-confirm').addEventListener('click', async (e) => {
       if (!_onConfirm) { closeModal(); return; }
-      const btn = e.currentTarget, orig = btn.innerHTML;
+      const btn = e.currentTarget, orig = btn.innerHTML, gen = _modalGen;
       btn.disabled = true; btn.innerHTML = spinner;
       try { const keep = await _onConfirm(); if (keep !== true) closeModal(); }
       catch (err) { console.error(err); toast(err.message || 'שגיאה בשמירה', 'error'); }
-      finally { btn.disabled = false; btn.innerHTML = orig; }
+      finally { btn.disabled = false; if (gen === _modalGen) btn.innerHTML = orig; }
     });
     document.getElementById('viewer-close').addEventListener('click', viewer.close);
     document.addEventListener('keydown', e => {

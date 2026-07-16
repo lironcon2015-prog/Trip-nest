@@ -157,12 +157,13 @@ const G = (() => {
       if (!kw || !kw.length) { kw = [...DEFAULT_KEYWORDS]; await DB.settings.set('keywords', kw); await DB.touchShared(); }
       return kw;
     },
-    buildQuery(keywords, { after = null, before = null, newerDays = 180 } = {}) {
+    buildQuery(keywords, { after = null, before = null, newerDays = 180, attachmentsOnly = false } = {}) {
       const kw = '(' + keywords.map(k => `"${k}"`).join(' OR ') + ')';
       let q = kw;
       if (after) q += ` after:${after.replaceAll('-', '/')}`;
       if (before) q += ` before:${before.replaceAll('-', '/')}`;
       if (!after && !before) q += ` newer_than:${newerDays}d`;
+      if (attachmentsOnly) q += ' has:attachment';
       return q;
     },
     // מזהי הודעות מהתיבה של בן/בת הזוג מקבלים קידומת 'p:' — כך getFull/getAttachment
