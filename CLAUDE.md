@@ -25,7 +25,9 @@
 - **גשר Apps Script** (`bridge/bridge.gs`): כל הגישה ל-Drive/Gmail עוברת דרך web-app שרץ בחשבון Google של המשתמש, מוגן בטוקן. `js/google.js` הוא הלקוח — POST כ-simple request (בלי headers, כדי לא להפעיל CORS preflight). שינוי בגשר מחייב פריסה מחדש ידנית אצל המשתמש — לשבור תאימות רק כשאין ברירה.
 - **שתי תיבות Gmail**: גשר "שלי" + גשר של בן/בת הזוג (`partnerBridgeUrl/Token`). מזהי הודעות מהתיבה השנייה נושאים קידומת `p:` והניתוב נעשה ב-`G.gmail._route`.
 - **סנכרון**: `tripnest-db.json` בתיקיית דרייב משותפת, merge לפי `updatedAt` עם tombstones (`deleted:true`). blobs של מסמכים נשמרים כקבצים בתתי-תיקיות לפי טיול, לא בתוך ה-db.json.
-- **פרטיות**: כספת הדרכונים (`vault`) ו-settings לא עוזבים את המכשיר לעולם — לא לסנכרון, לא לגיבוי, לא ל-Gemini.
+- **Gemini — מפל מודלים**: `Gemini.call` מנסה מודלים לפי הסדר (`DEFAULT_MODELS`, דריסה ב-`DB.settings.geminiModels`); fallback רק על 429/503/RESOURCE_EXHAUSTED/UNAVAILABLE, כל שגיאה אחרת נזרקת מיד. מפתח בכותרת `x-goog-api-key`, לעולם לא ב-query string. אבחון: `Gemini.testModels` (כפתור בהגדרות).
+- **זיכרון הסוכן**: היסטוריית הצ'אט (`agentHistory`) ופתקי זיכרון (`agentNotes`, כלים `remember_note`/`forget_note`) הם `SHARED_SETTINGS` — מסונכרנים בין בני הזוג. הקונטקסט המלא מוזרק רק לטיולים נוכחיים/עתידיים; טיולי עבר מצטמצמים לשורת סיכום.
+- **פרטיות**: כספת הדרכונים (`vault`) לא עוזבת את המכשיר לעולם — לא לסנכרון, לא לגיבוי, לא ל-Gemini. מפתחות API וכתובות גשר מקומיים למכשיר.
 - **הקפצת גרסה — חובה בכל commit שמשנה קוד אפליקציה**, בשלושה מקומות יחד: `sw.js` (`CACHE_VERSION`), `version.json`, `index.html` (`_BUNDLE_VERSION`). בלי זה מנגנון העדכון (באנר + בדיקה ידנית) לא יזהה את הגרסה.
 - טקסטים למשתמש בעברית (RTL); קוד והערות-קוד באנגלית מותרות, הודעות שגיאה למשתמש בעברית.
 

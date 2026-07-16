@@ -4,7 +4,7 @@ const DB = (() => {
   const NAME = 'TripNestDB';
   const VERSION = 1;
   const SYNC_STORES = ['trips', 'documents', 'events', 'checklists', 'expenses', 'members'];
-  const SHARED_SETTINGS = ['keywords', 'agentPersona'];
+  const SHARED_SETTINGS = ['keywords', 'agentPersona', 'agentHistory', 'agentNotes'];
   let _db = null;
 
   function open() {

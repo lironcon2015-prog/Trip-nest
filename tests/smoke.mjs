@@ -113,7 +113,23 @@ function bridge(req, S = bridgeState, token = TOKEN) {
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 }
 
+/* mock Gemini API: per-model scripted responses + call log */
+const gemini = { behavior: {}, calls: [] };
+function geminiRespond(url, opts) {
+  const model = String(url).match(/models\/([^:]+):generateContent/)[1];
+  gemini.calls.push({ model, url: String(url), headers: opts.headers || {} });
+  const b = gemini.behavior[model] || { status: 200 };
+  if (b.status === 200) {
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: b.reply || 'ok:' + model }] } }] }) };
+  }
+  return {
+    ok: false, status: b.status,
+    json: async () => { if (b.nonJson) throw new Error('not json'); return { error: { message: b.message || 'err', status: b.apiStatus || '' } }; },
+  };
+}
+
 globalThis.fetch = async (url, opts = {}) => {
+  if (String(url).includes('generativelanguage.googleapis.com')) return geminiRespond(url, opts);
   const req = JSON.parse(opts.body);
   let body;
   if (String(url).startsWith(PARTNER_URL)) {
@@ -187,9 +203,11 @@ globalThis.DB = {
   },
 };
 
-/* ---------- load the client under test ---------- */
+/* ---------- load the clients under test ---------- */
 (0, eval)(readFileSync(join(root, 'js/google.js'), 'utf-8'));
+(0, eval)(readFileSync(join(root, 'js/gemini.js'), 'utf-8'));
 const G = globalThis.G;
+const Gemini = globalThis.Gemini;
 
 /* ---------- tiny runner ---------- */
 let passed = 0, failed = 0;
@@ -309,6 +327,53 @@ await test('סנכרון מלא: העלאת מסמך + db.json, ומשיכה ח�
   assert(res2.ok, 'second sync failed: ' + res2.error);
   const pulled = (await DB.allRaw('documents'))[0];
   assert(pulled.blob && (await pulled.blob.text()) === 'PDF-BYTES', 'blob was not pulled back');
+});
+
+/* ---------- Gemini cascade ---------- */
+await DB.settings.set('geminiKey', 'test-gemini-key');
+
+await test('Gemini: מפתח בכותרת, לא ב-URL', async () => {
+  gemini.behavior = {}; gemini.calls = [];
+  await Gemini.call({ contents: [] });
+  const c = gemini.calls[0];
+  assert(c.headers['x-goog-api-key'] === 'test-gemini-key', 'key header missing');
+  assert(!c.url.includes('test-gemini-key'), 'key must not appear in URL');
+});
+
+await test('Gemini: עומס במודל הראשון → fallback לשני', async () => {
+  gemini.behavior = { 'gemini-2.5-flash': { status: 429 } }; gemini.calls = [];
+  const data = await Gemini.call({ contents: [] });
+  assert(Gemini.textOf(data) === 'ok:gemini-2.5-flash-lite', 'expected second model reply');
+  assert(gemini.calls.length === 2, 'expected exactly 2 calls');
+});
+
+await test('Gemini: שגיאת תצורה (400) → זריקה מיידית בלי fallback', async () => {
+  gemini.behavior = { 'gemini-2.5-flash': { status: 400, message: 'API key not valid' } }; gemini.calls = [];
+  let err = null;
+  try { await Gemini.call({ contents: [] }); } catch (e) { err = e; }
+  assert(err && err.message === 'API key not valid', 'expected immediate throw');
+  assert(gemini.calls.length === 1, 'second model must not be tried on config error');
+});
+
+await test('Gemini: כל המודלים עמוסים (כולל גוף לא-JSON) → הודעת עומס', async () => {
+  gemini.behavior = {
+    'gemini-2.5-flash': { status: 503, nonJson: true },
+    'gemini-2.5-flash-lite': { status: 429 },
+  };
+  let err = null;
+  try { await Gemini.call({ contents: [] }); } catch (e) { err = e; }
+  assert(err && err.message.includes('עמוסים'), 'expected all-busy error, got: ' + err);
+});
+
+await test('Gemini: דריסת רשימת מודלים + testModels', async () => {
+  await Gemini.setModels(['custom-model']);
+  gemini.behavior = {}; gemini.calls = [];
+  await Gemini.call({ contents: [] });
+  assert(gemini.calls[0].model === 'custom-model', 'override not used');
+  gemini.behavior = { 'custom-model': { status: 404, message: 'not found' } };
+  const results = await Gemini.testModels('בדיקה');
+  assert(results.length === 1 && !results[0].ok && results[0].error === 'not found', 'testModels result wrong');
+  await Gemini.setModels(Gemini.DEFAULT_MODELS.slice());
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

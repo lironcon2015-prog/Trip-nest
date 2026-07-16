@@ -11,6 +11,7 @@ const Settings = (() => {
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
     ]);
     const keywords = await G.gmail.keywords();
+    const geminiModels = await Gemini.models();
 
     el.innerHTML = `
       <!-- Google bridge -->
@@ -70,6 +71,10 @@ const Settings = (() => {
         <div class="space-y-3">
           <div><label class="tn-label">Gemini API Key <span class="text-slate-300">(נשמר במכשיר בלבד)</span></label>
             <input id="st-gemini-key" type="password" class="tn-input text-xs" dir="ltr" placeholder="AIza..." value="${UI.esc(geminiKey || '')}"></div>
+          <div><label class="tn-label">מפל מודלים <span class="text-slate-300">(לפי הסדר, מופרדים בפסיק)</span></label>
+            <input id="st-gemini-models" class="tn-input text-xs" dir="ltr" value="${UI.esc(geminiModels.join(', '))}">
+            <button id="st-test-models" class="text-[11px] text-indigo-400 font-medium mt-1">🧪 בדיקת המודלים</button>
+            <div id="st-models-result" class="text-[11px] mt-1 space-y-0.5"></div></div>
           <div><label class="tn-label">האישיות של הסוכן</label>
             <textarea id="st-persona" rows="6" class="tn-input text-xs leading-relaxed">${UI.esc(persona || Agent.DEFAULT_PERSONA)}</textarea>
             <p class="text-[11px] text-slate-400 mt-1">האישיות משותפת לשניכם — ערכו אותה יחד 💜</p></div>
@@ -195,9 +200,27 @@ const Settings = (() => {
     /* gemini */
     document.getElementById('st-save-gemini').addEventListener('click', async () => {
       await DB.settings.set('geminiKey', document.getElementById('st-gemini-key').value.trim());
+      const models = document.getElementById('st-gemini-models').value.split(',').map(s => s.trim()).filter(Boolean);
+      await Gemini.setModels(models.length ? models : Gemini.DEFAULT_MODELS.slice());
       await DB.settings.set('agentPersona', document.getElementById('st-persona').value.trim());
       await DB.touchShared(); G.Sync.queue();
       UI.toast('הסוכן עודכן ✓', 'success');
+    });
+
+    document.getElementById('st-test-models').addEventListener('click', async (e) => {
+      const out = document.getElementById('st-models-result');
+      e.target.disabled = true;
+      out.innerHTML = '<span class="text-slate-400">בודק…</span>';
+      try {
+        await DB.settings.set('geminiKey', document.getElementById('st-gemini-key').value.trim());
+        const models = document.getElementById('st-gemini-models').value.split(',').map(s => s.trim()).filter(Boolean);
+        if (models.length) await Gemini.setModels(models);
+        const results = await Gemini.testModels();
+        out.innerHTML = results.map(r => r.ok
+          ? `<div class="text-emerald-600">✓ ${UI.esc(r.model)} · ${r.ms}ms</div>`
+          : `<div class="text-red-500">✗ ${UI.esc(r.model)} · ${UI.esc(r.error)}</div>`).join('');
+      } catch (err) { out.innerHTML = `<div class="text-red-500">${UI.esc(err.message)}</div>`; }
+      e.target.disabled = false;
     });
 
     /* members */

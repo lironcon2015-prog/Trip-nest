@@ -1,8 +1,19 @@
 /* TripNest — AI agent (Gemini): chat, quick-action chips, function calling with user approval.
    Context = trips/events/docs metadata only. Passport photos never reach the API. */
 const Agent = (() => {
-  let history = [];   // [{role:'user'|'model', parts:[...]}]
+  let history = [];   // [{role:'user'|'model', parts:[...]}] — persisted in shared settings
+  let historyLoaded = false;
   let busy = false;
+
+  async function loadHistory() {
+    history = (await DB.settings.get('agentHistory')) || [];
+    historyLoaded = true;
+  }
+  async function saveHistory() {
+    await DB.settings.set('agentHistory', history);
+    await DB.touchShared();
+    G.Sync.queue();
+  }
 
   const CHIPS = [
     'בנה תוכנית טיול לטיול הקרוב',
@@ -80,6 +91,23 @@ const Agent = (() => {
         required: ['docId', 'category'],
       },
     },
+    {
+      name: 'remember_note',
+      description: 'שמירת עובדה לזיכרון ארוך-טווח (העדפות, החלטות, מידע שכדאי לזכור לטיולים הבאים). השתמש כשהמשפחה מספרת משהו ששווה לזכור.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          note: { type: 'STRING', description: 'העובדה לזכירה, משפט קצר בעברית' },
+          tripId: { type: 'STRING', description: 'אם קשור לטיול ספציפי, לא חובה' },
+        },
+        required: ['note'],
+      },
+    },
+    {
+      name: 'forget_note',
+      description: 'מחיקת עובדה מהזיכרון ארוך-הטווח לפי המזהה שלה',
+      parameters: { type: 'OBJECT', properties: { noteId: { type: 'STRING' } }, required: ['noteId'] },
+    },
   ];
 
   async function execTool(name, args) {
@@ -122,6 +150,22 @@ const Agent = (() => {
         await DB.put('documents', d);
         return { ok: true };
       }
+      case 'remember_note': {
+        const notes = (await DB.settings.get('agentNotes')) || [];
+        const n = { id: DB.uid(), note: args.note, tripId: args.tripId || null, createdAt: Date.now() };
+        notes.push(n);
+        await DB.settings.set('agentNotes', notes);
+        await DB.touchShared();
+        return { ok: true, noteId: n.id };
+      }
+      case 'forget_note': {
+        const notes = (await DB.settings.get('agentNotes')) || [];
+        const left = notes.filter(n => n.id !== args.noteId);
+        if (left.length === notes.length) return { ok: false, error: 'note not found' };
+        await DB.settings.set('agentNotes', left);
+        await DB.touchShared();
+        return { ok: true };
+      }
       default:
         return { ok: false, error: 'unknown tool' };
     }
@@ -135,6 +179,8 @@ const Agent = (() => {
       case 'create_checklist': return `📝 יצירת רשימה "<b>${UI.esc(args.title)}</b>" עם ${(args.items || []).length} פריטים`;
       case 'add_checklist_items': return `📝 הוספת ${(args.items || []).length} פריטים לרשימה`;
       case 'set_document_category': return `🏷️ שינוי קטגוריית מסמך ל"${UI.cat(args.category).he}"`;
+      case 'remember_note': return `🧠 לזכור: <b>${UI.esc(args.note)}</b>`;
+      case 'forget_note': return '🧠 מחיקת פתק מהזיכרון';
       default: return UI.esc(name);
     }
   }
@@ -147,10 +193,17 @@ const Agent = (() => {
       family: members.map(m => ({ id: m.id, name: m.nameHe, nameEn: m.nameEn, age: UI.age(m.birthDate) })),
       trips: [],
     };
+    // full detail only for current/upcoming trips; past trips shrink to a
+    // summary line — keeps the prompt small as trips accumulate
     for (const t of trips) {
-      ctx.trips.push({
+      const base = {
         id: t.id, name: t.name, destination: t.destination, start: t.startDate, end: t.endDate,
         travelers: (t.memberIds || []).map(id => members.find(m => m.id === id)?.nameHe).filter(Boolean),
+      };
+      const past = t.endDate && t.endDate < ctx.today;
+      if (past) { ctx.trips.push({ ...base, past: true }); continue; }
+      ctx.trips.push({
+        ...base,
         documents: (await DB.byTrip('documents', t.id)).map(d => ({
           id: d.id, name: d.fileName, category: d.category, extracted: d.extracted || null,
         })),
@@ -167,16 +220,30 @@ const Agent = (() => {
 
   async function systemPrompt() {
     const persona = (await DB.settings.get('agentPersona')) || DEFAULT_PERSONA;
-    return `${persona}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
+    const notes = (await DB.settings.get('agentNotes')) || [];
+    const memory = notes.length
+      ? `\n\n--- הזיכרון שלך (עובדות ששמרת עם remember_note; מחיקה עם forget_note) ---\n${notes.map(n => `[${n.id}] ${n.note}`).join('\n')}`
+      : '';
+    return `${persona}${memory}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
   }
 
   /* --- UI --- */
-  function render() {
+  async function render() {
     const chipsEl = document.getElementById('agent-chips');
     chipsEl.innerHTML = CHIPS.map(c =>
       `<button class="agent-chip shrink-0 bg-white text-indigo-600 text-xs font-medium px-3.5 py-2 rounded-full shadow-sm ring-1 ring-indigo-100 active:scale-95">${c}</button>`).join('');
     chipsEl.querySelectorAll('.agent-chip').forEach(b => b.addEventListener('click', () => send(b.textContent)));
-    if (!document.getElementById('agent-log').children.length) {
+    if (busy) return; // אל תדרוס את הלוג באמצע תור
+    if (!historyLoaded) await loadHistory();
+    const log = document.getElementById('agent-log');
+    log.innerHTML = '';
+    // rebuild visible conversation from persisted history (text turns only)
+    for (const turn of history) {
+      const text = (turn.parts || []).filter(p => p.text).map(p => p.text).join('');
+      if (!text) continue;
+      addBubble(turn.role === 'user' ? 'user' : 'model', turn.role === 'user' ? UI.esc(text) : mdLite(text));
+    }
+    if (!log.children.length) {
       addBubble('model', 'היי! אני העוזר של המזוודה 🧳 אפשר לשאול אותי על הטיולים, המסמכים והתוכניות — או ללחוץ על אחת הפעולות למעלה.');
     }
   }
@@ -229,6 +296,7 @@ const Agent = (() => {
       return;
     }
     busy = true;
+    if (!historyLoaded) await loadHistory();
     document.getElementById('agent-input').value = '';
     addBubble('user', UI.esc(text));
     history.push({ role: 'user', parts: [{ text }] });
@@ -272,6 +340,7 @@ const Agent = (() => {
         while (cut < history.length && !(history[cut].role === 'user' && history[cut].parts?.some(p => p.text))) cut++;
         history = history.slice(cut);
       }
+      await saveHistory();
       busy = false;
     }
   }
