@@ -1,34 +1,38 @@
-/* TripNest — settings: Google connection & shared folder, email keywords, Gemini & persona,
+/* TripNest — settings: Google bridge & shared folder, email keywords, Gemini & persona,
    family members, vault PIN, local backup, version. */
 const Settings = (() => {
 
   async function render() {
     const el = document.getElementById('settings-body');
-    const [clientId, apiKey, folderId, folderName, geminiKey, persona, lastSync] = await Promise.all([
-      DB.settings.get('googleClientId'), DB.settings.get('googleApiKey'),
+    const [bridgeUrl, bridgeToken, folderId, folderName, geminiKey, persona, lastSync] = await Promise.all([
+      DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
       DB.settings.get('driveFolderId'), DB.settings.get('driveFolderName'),
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
     ]);
     const keywords = await G.gmail.keywords();
 
     el.innerHTML = `
-      <!-- Google -->
+      <!-- Google bridge -->
       <section class="tn-card">
-        <h3 class="tn-card-title">☁️ חיבור Google (דרייב + Gmail)</h3>
+        <h3 class="tn-card-title">☁️ גשר Google (דרייב + Gmail)</h3>
+        <p class="text-[11px] text-slate-400 mb-3">הגשר הוא סקריפט קטן שרץ בחשבון Google שלכם (ראו README). הדביקו כאן את כתובתו ואת הטוקן הסודי שהגדרתם בו.</p>
         <div class="space-y-3">
-          <div><label class="tn-label">OAuth Client ID</label>
-            <input id="st-client-id" class="tn-input text-xs" dir="ltr" placeholder="xxxx.apps.googleusercontent.com" value="${UI.esc(clientId || '')}"></div>
-          <div><label class="tn-label">API Key (לבוחר התיקיות)</label>
-            <input id="st-api-key" class="tn-input text-xs" dir="ltr" placeholder="AIza..." value="${UI.esc(apiKey || '')}"></div>
-          <button id="st-save-google" class="tn-btn-secondary w-full">שמירת פרטי חיבור</button>
+          <div><label class="tn-label">כתובת הגשר (Web app URL)</label>
+            <input id="st-bridge-url" class="tn-input text-xs" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="${UI.esc(bridgeUrl || '')}"></div>
+          <div><label class="tn-label">טוקן סודי</label>
+            <input id="st-bridge-token" type="password" class="tn-input text-xs" dir="ltr" placeholder="הטוקן שהגדרתם ב-bridge.gs" value="${UI.esc(bridgeToken || '')}"></div>
+          <div class="flex gap-2">
+            <button id="st-save-bridge" class="tn-btn-secondary flex-1">שמירה</button>
+            <button id="st-ping-bridge" class="tn-btn-secondary flex-1">🔌 בדיקת חיבור</button>
+          </div>
           <div class="bg-slate-50 rounded-xl p-3 text-sm">
             <div class="flex items-center justify-between">
               <span class="text-slate-500 text-xs">תיקייה משותפת בדרייב:</span>
-              <b class="text-slate-700 text-xs">${folderName ? UI.esc(folderName) : '— לא נבחרה —'}</b>
+              <b class="text-slate-700 text-xs">${folderName ? UI.esc(folderName) : '— לא הוגדרה —'}</b>
             </div>
             <div class="flex gap-2 mt-2">
-              <button id="st-pick-folder" class="tn-btn-secondary flex-1 !text-xs">📂 בחירת תיקייה</button>
-              <button id="st-create-folder" class="tn-btn-secondary flex-1 !text-xs">➕ יצירה ושיתוף</button>
+              <button id="st-create-folder" class="tn-btn-secondary flex-1 !text-xs">➕ צור ושתף (מכשיר ראשון)</button>
+              <button id="st-connect-folder" class="tn-btn-secondary flex-1 !text-xs">🔗 התחבר לקיימת (מכשיר שני)</button>
             </div>
           </div>
           <button id="st-sync-now" class="tn-btn-primary w-full" ${folderId ? '' : 'disabled'}>🔄 סנכרון עכשיו</button>
@@ -85,42 +89,55 @@ const Settings = (() => {
       <div class="text-center text-[11px] text-slate-300 pb-4">המזוודה · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>`;
 
     /* wiring */
-    document.getElementById('st-save-google').addEventListener('click', async () => {
-      await DB.settings.set('googleClientId', document.getElementById('st-client-id').value.trim());
-      await DB.settings.set('googleApiKey', document.getElementById('st-api-key').value.trim());
-      UI.toast('נשמר ✓ עכשיו אפשר לבחור תיקייה', 'success');
+    document.getElementById('st-save-bridge').addEventListener('click', async () => {
+      await DB.settings.set('bridgeUrl', document.getElementById('st-bridge-url').value.trim());
+      await DB.settings.set('bridgeToken', document.getElementById('st-bridge-token').value.trim());
+      UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
 
-    document.getElementById('st-pick-folder').addEventListener('click', async () => {
+    document.getElementById('st-ping-bridge').addEventListener('click', async () => {
       try {
-        const picked = await G.pickFolder();
-        if (!picked) return;
-        await DB.settings.set('driveFolderId', picked.id);
-        await DB.settings.set('driveFolderName', picked.name);
-        UI.toast(`נבחרה התיקייה "${picked.name}" ✓`, 'success');
-        render();
-        G.Sync.run({ silent: false });
+        await DB.settings.set('bridgeUrl', document.getElementById('st-bridge-url').value.trim());
+        await DB.settings.set('bridgeToken', document.getElementById('st-bridge-token').value.trim());
+        const out = await G.ping();
+        UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
     });
 
     document.getElementById('st-create-folder').addEventListener('click', () => {
       UI.openModal({
-        title: 'יצירת תיקייה משותפת',
+        title: 'יצירת תיקייה משותפת (מכשיר ראשון)',
         confirmLabel: 'יצירה ושיתוף',
         bodyHTML: `
           <div class="space-y-3">
             <div><label class="tn-label">שם התיקייה</label><input id="cf-name" class="tn-input" value="TripNest — המזוודה"></div>
             <div><label class="tn-label">אימייל של בן/בת הזוג לשיתוף</label><input id="cf-email" type="email" dir="ltr" class="tn-input" placeholder="partner@gmail.com"></div>
-            <p class="text-[11px] text-slate-400">התיקייה תיווצר בדרייב שלך ותשותף לעריכה. במכשיר של בן/בת הזוג בוחרים אותה עם "בחירת תיקייה".</p>
+            <p class="text-[11px] text-slate-400">התיקייה תיווצר בדרייב שלך ותשותף לעריכה. במכשיר השני לוחצים "🔗 התחבר לקיימת".</p>
           </div>`,
         onConfirm: async () => {
           const name = document.getElementById('cf-name').value.trim() || 'TripNest';
           const email = document.getElementById('cf-email').value.trim();
-          const folder = await G.drive.createFolder(name);
-          if (email) await G.drive.share(folder.id, email);
-          await DB.settings.set('driveFolderId', folder.id);
-          await DB.settings.set('driveFolderName', name);
-          UI.toast('התיקייה נוצרה ושותפה ✓', 'success');
+          const out = await G.setup.create({ name, partnerEmail: email || null });
+          UI.toast(`התיקייה "${out.folderName}" נוצרה ושותפה ✓`, 'success');
+          render();
+          G.Sync.run({ silent: false });
+        },
+      });
+    });
+
+    document.getElementById('st-connect-folder').addEventListener('click', () => {
+      UI.openModal({
+        title: 'התחברות לתיקייה קיימת (מכשיר שני)',
+        confirmLabel: 'חיפוש והתחברות',
+        bodyHTML: `
+          <div class="space-y-3">
+            <div><label class="tn-label">שם התיקייה (כפי שנוצרה במכשיר הראשון)</label><input id="cn-name" class="tn-input" value="TripNest — המזוודה"></div>
+            <p class="text-[11px] text-slate-400">הגשר יאתר את התיקייה ששותפה אליך בדרייב ויתחבר אליה.</p>
+          </div>`,
+        onConfirm: async () => {
+          const name = document.getElementById('cn-name').value.trim() || null;
+          const out = await G.setup.connect({ name });
+          UI.toast(`מחובר לתיקייה "${out.folderName}" ✓`, 'success');
           render();
           G.Sync.run({ silent: false });
         },

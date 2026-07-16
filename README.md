@@ -9,8 +9,9 @@
 ## עקרונות פרטיות
 
 - כל הנתונים נשמרים **אצלכם**: במכשיר (IndexedDB) ובתיקיית הדרייב הפרטית שלכם. שום דבר לא עובר דרך שרת של האפליקציה (אין כזה).
+- הגישה ל-Drive ול-Gmail נעשית דרך **גשר Apps Script שרץ בחשבון Google שלכם** — הקוד שלו פתוח בתיקיית `bridge/`, מוגן בטוקן סודי שרק אתם מכירים.
 - **צילומי דרכון נשמרים במכשיר בלבד** — לא עולים לדרייב, לא נשלחים ל-Gemini, לא נכללים בגיבויים.
-- מפתחות ה-API נשמרים מקומית במכשיר.
+- מפתחות, כתובת הגשר והטוקן נשמרים מקומית במכשיר.
 
 ## הפעלה ראשונה — צ׳ק-ליסט
 
@@ -18,29 +19,23 @@
 Settings → Pages → Source: **Deploy from a branch** → Branch: `main` / root → Save.
 האפליקציה תעלה ל-`https://<user>.github.io/trip-nest/`.
 
-### 2) פרויקט Google Cloud (פעם אחת, לשני החשבונות)
-1. היכנסו ל-[console.cloud.google.com](https://console.cloud.google.com) → צרו פרויקט חדש (למשל `tripnest`).
-2. **APIs & Services → Library** → הפעילו: `Google Drive API`, `Gmail API`, `Google Picker API`.
-3. **APIs & Services → OAuth consent screen**:
-   - User type: **External** → מלאו שם אפליקציה ואימייל.
-   - Scopes: אפשר לדלג (הבקשה נעשית מהאפליקציה).
-   - **Test users**: הוסיפו את שתי כתובות ה-Gmail שלכם.
-4. **APIs & Services → Credentials**:
-   - **Create Credentials → OAuth client ID** → Web application →
-     תחת *Authorized JavaScript origins* הוסיפו את כתובת ה-Pages
-     (`https://<user>.github.io`) → העתיקו את ה-**Client ID**.
-   - **Create Credentials → API key** → מומלץ להגביל ל-Picker API ולכתובת האתר → העתיקו את ה-**API Key**.
-5. באפליקציה: הגדרות → חיבור Google → הדביקו Client ID + API Key (בכל מכשיר).
+### 2) גשר Apps Script (כ-5 דקות, כל אחד בחשבון ה-Gmail שלו — בלי Cloud Console!)
+1. היכנסו ל-[script.new](https://script.new) כשאתם מחוברים לחשבון ה-Gmail הנכון.
+2. מחקו את התוכן והדביקו את הקובץ [`bridge/bridge.gs`](bridge/bridge.gs) במלואו.
+3. בשורה הראשונה של הקוד החליפו את `SECRET_TOKEN` למחרוזת סודית ארוכה משלכם.
+4. **Deploy → New deployment → Web app** → Execute as: **Me** · Who has access: **Anyone** → Deploy → אשרו את ההרשאות (Drive + Gmail של החשבון שלכם בלבד).
+5. העתיקו את כתובת ה-Web app (מסתיימת ב-`/exec`).
+6. באפליקציה: הגדרות → גשר Google → הדביקו את הכתובת ואת הטוקן → "🔌 בדיקת חיבור" אמורה להציג את המייל שלכם.
 
-> בזמן שהאפליקציה במצב Testing, גוגל מבקשת אישור הרשאות מחדש בערך פעם בשבוע — זה צפוי.
+> אזהרת "Google hasn't verified this app" באישור ההרשאות היא צפויה — זה הסקריפט **שלכם** שרץ בחשבון **שלכם**. לחצו Advanced → Go to project.
 
 ### 3) מפתח Gemini (חינם)
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → Create API key →
 הדביקו בהגדרות → סוכן AI. (בכל מכשיר; המפתח לא מסתנכרן.)
 
 ### 4) תיקייה משותפת בדרייב
-במכשיר הראשון: הגדרות → "➕ יצירה ושיתוף" → הזינו את המייל של בן/בת הזוג.
-במכשיר השני: הגדרות → "📂 בחירת תיקייה" → בחרו את התיקייה ששותפה אליכם.
+במכשיר הראשון: הגדרות → "➕ צור ושתף (מכשיר ראשון)" → הזינו את המייל של בן/בת הזוג.
+במכשיר השני: הגדרות → "🔗 התחבר לקיימת (מכשיר שני)" — הגשר מאתר את התיקייה ששותפה אליכם.
 
 ### 5) התקנה על מסך הבית
 - **iPhone**: Safari → שיתוף → "הוסף למסך הבית".
@@ -71,7 +66,7 @@ Settings → Pages → Source: **Deploy from a branch** → Branch: `main` / roo
 │   ├── db.js         # IndexedDB
 │   ├── ui.js         # רכיבי UI משותפים
 │   ├── gemini.js     # קריאות Gemini API
-│   ├── google.js     # OAuth, Drive, Gmail
+│   ├── google.js     # לקוח הגשר — Drive, Gmail
 │   ├── members.js    # בני משפחה
 │   ├── vault.js      # כספת דרכונים
 │   ├── documents.js  # מסמכים
@@ -80,6 +75,10 @@ Settings → Pages → Source: **Deploy from a branch** → Branch: `main` / roo
 │   ├── agent.js      # סוכן AI
 │   ├── settings.js   # הגדרות
 │   └── app.js        # אתחול וניווט
+├── bridge/
+│   └── bridge.gs     # גשר Apps Script — מודבק ב-script.new (לא נטען מהאתר)
+├── tests/
+│   └── smoke.mjs     # בדיקת עשן (node tests/smoke.mjs) עם mock של הגשר
 ├── icons/            # אייקוני PWA
 └── docs/             # מסמכי עיצוב ותכנון
 ```
@@ -88,6 +87,8 @@ Settings → Pages → Source: **Deploy from a branch** → Branch: `main` / roo
 
 ```bash
 python3 -m http.server 8080   # ואז http://localhost:8080
+node tests/smoke.mjs          # בדיקת עשן ללקוח הגשר
 ```
 
 בכל commit שמשנה קוד יש לעדכן יחד: `sw.js` (CACHE_VERSION), `version.json`, `index.html` (`_BUNDLE_VERSION`).
+שינוי ב-`bridge/bridge.gs` מחייב פריסה מחדש של הגשר (Deploy → Manage deployments → Edit → New version).

@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.0.0';
+const CACHE_VERSION = '1.1.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -9,8 +9,8 @@ const CORE = [
   './icons/icon-192.png', './icons/icon-512.png',
 ];
 
-// hosts that must never be cached (auth, APIs)
-const BYPASS = ['accounts.google.com', 'googleapis.com', 'generativelanguage.googleapis.com', 'apis.google.com', 'oauth2.googleapis.com'];
+// hosts that must never be cached (bridge, APIs)
+const BYPASS = ['script.google.com', 'script.googleusercontent.com', 'googleapis.com', 'generativelanguage.googleapis.com'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
