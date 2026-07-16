@@ -191,12 +191,14 @@ const Documents = (() => {
   async function pdfAsImageExtract(doc) {
     try {
       const data = await doc.blob.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data }).promise;
+      const pdf = await pdfjsLib.getDocument({ data, ...UI.PDF_OPTS }).promise;
       const page = await pdf.getPage(1);
       const vp = page.getViewport({ scale: 1.5 });
       const c = document.createElement('canvas');
       c.width = vp.width; c.height = vp.height;
-      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      const ctx = c.getContext('2d');
+      ctx.direction = 'ltr'; // rtl-inherited canvas direction garbles pdf.js text (see UI.renderPdf)
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
       const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
       return Gemini.extractFromImage(blob, doc.fileName);
     } catch { return null; }

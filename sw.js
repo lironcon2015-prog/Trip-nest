@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.9.1';
+const CACHE_VERSION = '1.9.2';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -56,6 +56,6 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
       }
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => e.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()))
   );
 });

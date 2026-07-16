@@ -164,10 +164,19 @@ const UI = (() => {
     },
   };
 
+  // PDFs with non-embedded fonts (e.g. bare Helvetica) render with missing
+  // glyphs unless pdf.js is given its substitute font files; CJK/Hebrew CID
+  // fonts likewise need the cMaps.
+  const PDF_OPTS = {
+    standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/',
+    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+    cMapPacked: true,
+  };
+
   async function renderPdf(blob, container) {
     try {
       const data = await blob.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data }).promise;
+      const pdf = await pdfjsLib.getDocument({ data, ...PDF_OPTS }).promise;
       container.innerHTML = '';
       const pages = Math.min(pdf.numPages, 20);
       for (let i = 1; i <= pages; i++) {
@@ -178,7 +187,12 @@ const UI = (() => {
         canvas.width = vp.width; canvas.height = vp.height;
         canvas.className = 'w-full rounded-xl shadow-md mb-4 bg-white';
         container.appendChild(canvas);
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        const ctx = canvas.getContext('2d');
+        // the app is dir=rtl, and canvas contexts inherit it — flipping fillText
+        // anchoring so pdf.js paints glyph runs shifted and the PDF's clip rects
+        // cut them off (missing letters). PDFs are always laid out explicitly.
+        ctx.direction = 'ltr';
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
       }
     } catch (e) {
       console.error(e);
@@ -189,7 +203,7 @@ const UI = (() => {
   // extracts text from a PDF blob (for Gemini extraction)
   async function pdfText(blob, maxPages = 4) {
     const data = await blob.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const pdf = await pdfjsLib.getDocument({ data, ...PDF_OPTS }).promise;
     let out = '';
     for (let i = 1; i <= Math.min(pdf.numPages, maxPages); i++) {
       const tc = await (await pdf.getPage(i)).getTextContent();
@@ -234,7 +248,7 @@ const UI = (() => {
   return {
     esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText,
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
-    fileToDataURL, avatarHTML, emptyState, spinner, busy,
+    fileToDataURL, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, init,
   };
 })();
