@@ -47,7 +47,7 @@ const Members = (() => {
         <div class="mt-5">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-semibold text-slate-700">🛂 דרכון <span class="text-[10px] font-normal text-slate-400">(מקומי בלבד)</span></span>
-            <button id="profile-add-passport" class="text-xs text-indigo-600 font-medium">📷 צילום דרכון</button>
+            <button id="profile-add-passport" class="text-xs text-indigo-600 font-medium">📷 צילום / העלאת דרכון</button>
           </div>
           ${passportHTML}
         </div>

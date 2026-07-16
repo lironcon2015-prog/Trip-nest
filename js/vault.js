@@ -40,7 +40,7 @@ const Vault = (() => {
             ${UI.avatarHTML(m, 'w-10 h-10')}
             <div class="flex-1"><div class="font-semibold text-slate-800 text-sm">${UI.esc(m.nameHe)}</div>
             <div class="text-[11px] text-slate-400">${mine.length ? `${mine.length} צילומים במכשיר` : 'אין צילום במכשיר הזה'}</div></div>
-            <button class="vault-add text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full" data-member="${m.id}">📷 צילום</button>
+            <button class="vault-add text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full" data-member="${m.id}">📷 הוספה</button>
           </div>
           ${mine.length ? `<div class="grid grid-cols-3 gap-2">${mine.map(v => `
             <div class="relative group">
@@ -85,7 +85,8 @@ const Vault = (() => {
 
   function capture(memberId) {
     const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+    // no `capture` attribute — the OS offers both camera and photo/file upload
+    input.type = 'file'; input.accept = 'image/*';
     input.addEventListener('change', () => {
       const f = input.files[0];
       if (!f) return;
@@ -96,6 +97,7 @@ const Vault = (() => {
           <img id="vc-preview" class="w-full max-h-60 object-contain rounded-2xl bg-slate-100 mb-4">
           <label class="tn-label">תוקף הדרכון (לא חובה — משמש להתרעות)</label>
           <input id="vc-expiry" type="date" class="tn-input">
+          <p id="vc-mrz-hint" class="text-[11px] text-indigo-400 mt-1"></p>
           <p class="text-[11px] text-slate-400 mt-3">🔐 נשמר במכשיר הזה בלבד.</p>`,
         onConfirm: async () => {
           await DB.putRaw('vault', {
@@ -107,6 +109,15 @@ const Vault = (() => {
         },
       });
       document.getElementById('vc-preview').src = URL.createObjectURL(f);
+      // local MRZ read (on-device) to prefill the expiry date
+      MRZ.fromImage(f, { thorough: true }).then(p => {
+        const el = document.getElementById('vc-expiry');
+        if (p?.expiryDate && el && !el.value) {
+          el.value = p.expiryDate;
+          const hint = document.getElementById('vc-mrz-hint');
+          if (hint) hint.textContent = '✓ התוקף זוהה מקומית מהדרכון';
+        }
+      }).catch(() => { });
     });
     input.click();
   }
