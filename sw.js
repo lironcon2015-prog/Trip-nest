@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.7.0';
+const CACHE_VERSION = '1.7.1';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -13,7 +13,15 @@ const CORE = [
 const BYPASS = ['script.google.com', 'script.googleusercontent.com', 'googleapis.com', 'generativelanguage.googleapis.com'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
+  // cache:'no-cache' — fill the new cache from the server, never from a
+  // possibly-stale HTTP cache (Safari serves Pages' max-age=600 copies)
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(c => Promise.all(CORE.map(u =>
+        fetch(u, { cache: 'no-cache' }).then(r => { if (r.ok) return c.put(u, r); })
+      )))
+      .then(() => self.skipWaiting())
+  );
 });
 
 // the app's update banner asks the new SW to take over immediately

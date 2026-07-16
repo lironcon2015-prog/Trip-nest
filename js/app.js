@@ -125,16 +125,20 @@ const App = (() => {
     }
   }
 
-  /* ---------- app updates (service worker + version.json) ---------- */
+  /* ---------- app updates (service worker + version.json) ----------
+     שכבות הגנה, כי ספארי מכבד את ה-HTTP cache של Pages גם עבור sw.js:
+     1. רישום עם updateViaCache:'none' — בלי cache מקומי לסקריפט.
+     2. version.json (network-first) הוא מקור האמת; אם הוא חדש וה-SW לא
+        מתעדכן — רישום מחדש עם ./sw.js?v=<גרסה>: URL חדש ששום cache
+        (מקומי או CDN) לא יכול להגיש ממנו עותק ישן.
+     3. עדיין תקוע → "עדכון כפוי": ניקוי caches + רישום מחדש + טעינה.
+        הנתונים ב-IndexedDB לא נמחקים אף פעם. */
   const Updater = {
     reg: null,
     waiting: null,
 
-    async init() {
-      if (!('serviceWorker' in navigator)) return;
-      try { this.reg = await navigator.serviceWorker.register('./sw.js'); }
-      catch (e) { console.warn('SW registration failed', e); return; }
-
+    _wire() {
+      if (!this.reg) return;
       // controller קיים = זה עדכון ולא התקנה ראשונה
       const track = (w) => {
         if (!w) return;
@@ -142,11 +146,18 @@ const App = (() => {
           if (w.state === 'installed' && navigator.serviceWorker.controller) this.prompt(w);
         });
       };
-      // כיסוי כל שלושת המצבים: גרסה שכבר מחכה, גרסה שכבר באמצע התקנה
-      // (updatefound שירה לפני שנרשמנו — הבאג שהעלים את הבאנר), וגרסה עתידית
+      // כיסוי כל המצבים: גרסה שכבר מחכה, גרסה שבאמצע התקנה
+      // (updatefound שירה לפני שנרשמנו), וגרסאות עתידיות
       if (this.reg.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
       track(this.reg.installing);
       this.reg.addEventListener('updatefound', () => track(this.reg.installing));
+    },
+
+    async init() {
+      if (!('serviceWorker' in navigator)) return;
+      try { this.reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }); }
+      catch (e) { console.warn('SW registration failed', e); return; }
+      this._wire();
 
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -161,23 +172,51 @@ const App = (() => {
       });
     },
 
-    // reg.update() מוריד sw.js חדש אם השתנה; version.json נותן מספר גרסה להצגה
     async check({ manual = false } = {}) {
       try { await this.reg?.update(); } catch { }
-      // רשת ביטחון: גרסה שמחכה בלי שנתפסה באירועים → באנר עכשיו
-      if (this.reg?.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
       let remote = null;
       try {
         const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
         remote = (await res.json()).version;
       } catch { }
       const current = window._BUNDLE_VERSION || '';
+
+      // השרת חדש אבל אין שום התקנה בדרך → עקיפת cache בכוח עם URL ייחודי
+      if (remote && remote !== current && this.reg && !this.reg.waiting && !this.reg.installing) {
+        try {
+          this.reg = await navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(remote)}`, { updateViaCache: 'none' });
+          this._wire();
+        } catch { }
+      }
+      // המתנה קצרה לסיום ההתקנה (עד ~8 שניות)
+      for (let i = 0; i < 8 && !this.reg?.waiting; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (!this.reg?.installing && !this.reg?.waiting && i >= 2) break;
+      }
+      if (this.reg?.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
+
       if (manual) {
-        if (this.waiting) this.prompt(this.waiting);
-        else if (remote && remote !== current) UI.toast(`גרסה ${remote} נמצאה — מוריד ברקע, עוד רגע יופיע כפתור עדכון`, 'info');
+        if (this.waiting || this.reg?.waiting) { /* הבאנר כבר מוצג */ }
+        else if (remote && remote !== current) this.offerForce(remote);
         else UI.toast(`אתם על הגרסה האחרונה (v${current}) ✓`, 'success');
       }
       return { current, remote };
+    },
+
+    // המוצא האחרון — דטרמיניסטי: מנקה את כל שכבות ה-cache וטוען מהשרת.
+    async hardReload() {
+      try {
+        for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+        for (const k of await caches.keys()) await caches.delete(k);
+      } catch { }
+      location.reload();
+    },
+
+    offerForce(remote) {
+      UI.confirm(
+        `גרסה ${remote} זמינה אבל ההתקנה השקטה נתקעה. לבצע עדכון כפוי? האפליקציה תנוקה מקבצים שמורים ותיטען מחדש מהשרת — הנתונים שלכם (טיולים, מסמכים, כספת) לא נמחקים.`,
+        () => this.hardReload(),
+      );
     },
 
     prompt(worker) {
@@ -198,6 +237,7 @@ const App = (() => {
         e.target.textContent = 'מעדכן…';
         e.target.disabled = true;
         worker.postMessage({ type: 'SKIP_WAITING' }); // controllerchange יטען מחדש
+        setTimeout(() => this.hardReload(), 5000);    // ואם לא הגיע — עדכון כפוי
       });
       document.getElementById('update-later').addEventListener('click', () => el.remove());
     },
