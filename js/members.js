@@ -1,9 +1,22 @@
 /* TripNest — family members: avatar strip, profile card (Hebrew/English name, age, passport). */
 const Members = (() => {
 
+  // manual sortOrder wins; otherwise oldest first (no birth date → last), then Hebrew name
+  function sorted(members) {
+    return [...members].sort((a, b) => {
+      const ao = a.sortOrder, bo = b.sortOrder;
+      if (ao != null && bo != null && ao !== bo) return ao - bo;
+      if (ao != null && bo == null) return -1;
+      if (bo != null && ao == null) return 1;
+      const ad = a.birthDate || '9999-12-31', bd = b.birthDate || '9999-12-31';
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return (a.nameHe || '').localeCompare(b.nameHe || '', 'he');
+    });
+  }
+
   async function strip(containerId) {
     const el = document.getElementById(containerId);
-    const members = await DB.all('members');
+    const members = sorted(await DB.all('members'));
     el.innerHTML = members.map(m => `
       <button class="flex flex-col items-center gap-1.5 shrink-0" data-member="${m.id}">
         ${UI.avatarHTML(m, 'w-14 h-14')}
@@ -12,10 +25,69 @@ const Members = (() => {
       <button id="${containerId}-add" class="flex flex-col items-center gap-1.5 shrink-0">
         <span class="w-14 h-14 rounded-full border-2 border-dashed border-slate-300 text-slate-400 flex items-center justify-center text-2xl font-light">+</span>
         <span class="text-xs text-slate-400">הוספה</span>
-      </button>`;
+      </button>` + (members.length > 1 ? `
+      <button id="${containerId}-reorder" class="flex flex-col items-center gap-1.5 shrink-0">
+        <span class="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl">⇅</span>
+        <span class="text-xs text-slate-400">סידור</span>
+      </button>` : '');
     el.querySelectorAll('[data-member]').forEach(b =>
       b.addEventListener('click', () => openProfile(b.dataset.member)));
     document.getElementById(`${containerId}-add`).addEventListener('click', () => editModal());
+    document.getElementById(`${containerId}-reorder`)?.addEventListener('click', () => reorderModal());
+  }
+
+  async function reorderModal() {
+    let order = sorted(await DB.all('members'));
+    let useDefault = false; // true after reset, until the user moves someone again
+
+    UI.openModal({
+      title: 'סידור בני המשפחה',
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <p class="text-xs text-slate-400 mb-3 leading-relaxed">הזיזו עם החצים כדי לקבוע את סדר האווטרים.<br>ברירת המחדל היא סידור לפי גיל — מהמבוגר לצעיר.</p>
+        <div id="reorder-list" class="space-y-2"></div>
+        <button id="reorder-reset" class="mt-4 w-full py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium">↺ חזרה לסידור לפי גיל</button>`,
+      onConfirm: async () => {
+        for (const [i, m] of order.entries()) {
+          const rec = { ...m };
+          if (useDefault) delete rec.sortOrder; else rec.sortOrder = i;
+          await DB.put('members', rec);
+        }
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+        UI.toast('הסדר נשמר ✓', 'success');
+      },
+    });
+
+    const list = document.getElementById('reorder-list');
+    const render = () => {
+      list.innerHTML = order.map((m, i) => `
+        <div class="flex items-center gap-3 bg-slate-50 rounded-2xl p-2 pr-3">
+          ${UI.avatarHTML(m, 'w-10 h-10')}
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-slate-700 truncate">${UI.esc(m.nameHe)}</div>
+            ${UI.age(m.birthDate) != null ? `<div class="text-[11px] text-slate-400">גיל ${UI.age(m.birthDate)}</div>` : ''}
+          </div>
+          <button type="button" data-up="${i}" class="w-9 h-9 rounded-xl bg-white ring-1 ring-slate-200 text-slate-500 flex items-center justify-center disabled:opacity-30" ${i === 0 ? 'disabled' : ''}>▲</button>
+          <button type="button" data-down="${i}" class="w-9 h-9 rounded-xl bg-white ring-1 ring-slate-200 text-slate-500 flex items-center justify-center disabled:opacity-30" ${i === order.length - 1 ? 'disabled' : ''}>▼</button>
+        </div>`).join('');
+      const move = (i, j) => {
+        [order[i], order[j]] = [order[j], order[i]];
+        useDefault = false;
+        render();
+      };
+      list.querySelectorAll('[data-up]').forEach(b =>
+        b.addEventListener('click', () => move(+b.dataset.up, +b.dataset.up - 1)));
+      list.querySelectorAll('[data-down]').forEach(b =>
+        b.addEventListener('click', () => move(+b.dataset.down, +b.dataset.down + 1)));
+    };
+    render();
+
+    document.getElementById('reorder-reset').addEventListener('click', () => {
+      order = sorted(order.map(({ sortOrder, ...rest }) => rest));
+      useDefault = true;
+      render();
+    });
   }
 
   async function openProfile(memberId) {
@@ -125,7 +197,7 @@ const Members = (() => {
 
   // avatar multi-select used by the trip form
   async function pickerHTML(selectedIds = []) {
-    const members = await DB.all('members');
+    const members = sorted(await DB.all('members'));
     if (!members.length) return '<p class="text-xs text-slate-400">אין עדיין בני משפחה — הוסיפו במסך הבית</p>';
     return `<div class="flex gap-3 flex-wrap">${members.map(m => `
       <button type="button" class="tn-member-pick flex flex-col items-center gap-1 ${selectedIds.includes(m.id) ? 'picked' : ''}" data-id="${m.id}">
@@ -194,6 +266,6 @@ const Members = (() => {
     });
   }
 
-  return { strip, openProfile, editModal, pickerHTML, wirePicker, pickedIds, proposeFromPassport };
+  return { strip, openProfile, editModal, reorderModal, pickerHTML, wirePicker, pickedIds, sorted, proposeFromPassport };
 })();
 window.Members = Members;

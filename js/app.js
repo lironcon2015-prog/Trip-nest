@@ -46,7 +46,7 @@ const App = (() => {
       const du = t.startDate ? UI.daysUntil(t.startDate) : null;
       const pill = next.live ? '🏖️ עכשיו בטיול!' : (du != null ? `בעוד ${du} ימים` : '');
       const members = await DB.all('members');
-      const travelers = (t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean);
+      const travelers = Members.sorted((t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
       el.innerHTML = `
         <button id="hero-card" class="w-full text-right relative min-h-[280px] rounded-[2rem] overflow-hidden shadow-lg active:scale-[0.98] transition">
           ${t.coverImage

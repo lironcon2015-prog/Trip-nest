@@ -16,7 +16,7 @@ const Trips = (() => {
     const past = trips.filter(t => t.endDate && t.endDate < today).sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
 
     const card = (t) => {
-      const travelers = (t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean);
+      const travelers = Members.sorted((t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
       const du = t.startDate ? UI.daysUntil(t.startDate) : null;
       const pill = du === null ? '' : du > 0 ? `בעוד ${du} ימים` : (t.endDate && t.endDate >= today ? 'עכשיו בטיול ✈️' : 'הסתיים');
       return `
@@ -133,7 +133,7 @@ const Trips = (() => {
     if (!trip || trip.deleted) { App.navigate('trips'); return; }
     _activeTripId = tripId;
     const members = await DB.all('members');
-    const travelers = (trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean);
+    const travelers = Members.sorted((trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
 
     document.getElementById('trip-title').textContent = trip.name;
     document.getElementById('trip-sub').textContent =
