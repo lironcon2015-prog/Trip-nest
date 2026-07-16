@@ -120,7 +120,8 @@ const Documents = (() => {
     if (/(hotel|booking|airbnb|מלון|לינה)/.test(n)) return 'stay';
     if (/(insurance|ביטוח)/.test(n)) return 'insurance';
     if (/(car|rental|רכב|השכרה)/.test(n)) return 'car';
-    if (/(visa|passport|ויזה|דרכון)/.test(n)) return 'visa';
+    if (/(passport|דרכון)/.test(n)) return 'passport';
+    if (/(visa|ויזה)/.test(n)) return 'visa';
     return 'other';
   }
 
@@ -141,6 +142,14 @@ const Documents = (() => {
         extracted = await Gemini.extractFromText(await doc.blob.text(), doc.fileName);
       }
       if (!extracted) { if (!silent) UI.toast('לא הצלחתי לחלץ נתונים מהמסמך', 'warning'); return; }
+      // passport → offer to create a family member; the photo moves to the
+      // local-only vault and the doc never reaches the shared Drive folder
+      if (extracted.category === 'passport') {
+        doc.category = 'passport';
+        await DB.put('documents', doc);
+        Members.proposeFromPassport(doc, extracted.passport || {});
+        return;
+      }
       doc.extracted = extracted;
       if (extracted.category) doc.category = extracted.category;
       await DB.put('documents', doc);

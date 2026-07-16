@@ -58,10 +58,20 @@ const Trips = (() => {
             <div><label class="tn-label">תאריך חזרה</label><input id="tf-end" type="date" class="tn-input" value="${trip?.endDate || ''}"></div>
           </div>
           <div><label class="tn-label">מי נוסע?</label><div id="tf-members">${pickerHTML}</div></div>
-          <div><label class="tn-label">אימוג׳י / תמונת רקע</label>
-            <div class="flex flex-wrap gap-1.5 mb-2">${EMOJIS.map(e => `<button type="button" class="tf-emoji text-xl p-1.5 rounded-xl ${trip?.coverEmoji === e ? 'bg-indigo-100' : 'bg-slate-50'}" data-e="${e}">${e}</button>`).join('')}</div>
-            <button type="button" id="tf-cover-btn" class="text-xs text-indigo-600 font-medium">🖼️ ${cover ? 'החלפת' : 'העלאת'} תמונת רקע</button>
+          <div><label class="tn-label">תמונת החופשה</label>
+            <div id="tf-cover-preview" class="relative w-full h-28 rounded-2xl overflow-hidden mb-2 ${cover ? '' : 'hidden'}">
+              <img id="tf-cover-img" src="${cover || ''}" class="w-full h-full object-cover">
+              <button type="button" id="tf-cover-remove" class="absolute top-2 left-2 bg-black/60 text-white w-7 h-7 rounded-full text-xs">✕</button>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" id="tf-cover-btn" class="tn-btn-secondary flex-1 !text-xs">🖼️ ${cover ? 'החלפת תמונה' : 'בחירת תמונה'}</button>
+              <button type="button" id="tf-cover-camera" class="tn-btn-secondary flex-1 !text-xs">📷 צילום</button>
+            </div>
             <input type="file" id="tf-cover" accept="image/*" class="hidden">
+            <input type="file" id="tf-cover-cam" accept="image/*" capture="environment" class="hidden">
+          </div>
+          <div><label class="tn-label">או אימוג׳י (כשאין תמונה)</label>
+            <div class="flex flex-wrap gap-1.5">${EMOJIS.map(e => `<button type="button" class="tf-emoji text-xl p-1.5 rounded-xl ${trip?.coverEmoji === e ? 'bg-indigo-100' : 'bg-slate-50'}" data-e="${e}">${e}</button>`).join('')}</div>
           </div>
           ${trip ? '<button id="tf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">🗑️ מחיקת הטיול</button>' : ''}
         </div>`,
@@ -90,9 +100,21 @@ const Trips = (() => {
       document.querySelectorAll('.tf-emoji').forEach(x => x.classList.remove('bg-indigo-100'));
       b.classList.add('bg-indigo-100'); b.classList.remove('bg-slate-50');
     }));
+    const setCover = async (file) => {
+      if (!file) return;
+      cover = await UI.fileToDataURL(file, 1000, 0.75);
+      document.getElementById('tf-cover-img').src = cover;
+      document.getElementById('tf-cover-preview').classList.remove('hidden');
+      document.getElementById('tf-cover-btn').textContent = '🖼️ החלפת תמונה';
+    };
     document.getElementById('tf-cover-btn').addEventListener('click', () => document.getElementById('tf-cover').click());
-    document.getElementById('tf-cover').addEventListener('change', async (e) => {
-      if (e.target.files[0]) { cover = await UI.fileToDataURL(e.target.files[0], 1000, 0.75); UI.toast('התמונה נבחרה ✓', 'success'); }
+    document.getElementById('tf-cover-camera').addEventListener('click', () => document.getElementById('tf-cover-cam').click());
+    document.getElementById('tf-cover').addEventListener('change', (e) => setCover(e.target.files[0]));
+    document.getElementById('tf-cover-cam').addEventListener('change', (e) => setCover(e.target.files[0]));
+    document.getElementById('tf-cover-remove').addEventListener('click', () => {
+      cover = null;
+      document.getElementById('tf-cover-preview').classList.add('hidden');
+      document.getElementById('tf-cover-btn').textContent = '🖼️ בחירת תמונה';
     });
     document.getElementById('tf-delete')?.addEventListener('click', () =>
       UI.confirm(`למחוק את "${trip.name}" על כל המסמכים והתוכנית שלו?`, async () => {

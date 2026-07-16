@@ -9,7 +9,8 @@ const UI = (() => {
     { id: 'stay', he: 'לינה', emoji: '🏨' },
     { id: 'car', he: 'רכב', emoji: '🚗' },
     { id: 'insurance', he: 'ביטוח', emoji: '🛡️' },
-    { id: 'visa', he: 'ויזה ואשרות', emoji: '🛂' },
+    { id: 'visa', he: 'ויזה ואשרות', emoji: '🪪' },
+    { id: 'passport', he: 'דרכון', emoji: '🛂' },
     { id: 'attraction', he: 'אטרקציות', emoji: '🎟️' },
     { id: 'other', he: 'אחר', emoji: '📄' },
   ];

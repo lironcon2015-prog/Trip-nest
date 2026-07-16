@@ -112,6 +112,7 @@ const G = (() => {
         let blobsPushed = false;
         for (const doc of await DB.allRaw('documents')) {
           if (doc.deleted) continue;
+          if (doc.category === 'passport') continue; // passports never reach Drive
           if (doc.blob && !doc.driveFileId) {
             const trip = (await DB.get('trips', doc.tripId)) || { id: doc.tripId || 'misc', name: 'כללי' };
             doc.driveFileId = await drive.uploadDoc(folderId, trip, doc);

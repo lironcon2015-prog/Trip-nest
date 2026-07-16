@@ -139,6 +139,59 @@ const Members = (() => {
   }
   const pickedIds = (container) => [...container.querySelectorAll('.tn-member-pick.picked')].map(b => b.dataset.id);
 
-  return { strip, openProfile, editModal, pickerHTML, wirePicker, pickedIds };
+  /* --- passport upload → auto family member (photo goes to the local vault) --- */
+  function proposeFromPassport(doc, p) {
+    UI.openModal({
+      title: '🛂 זוהה דרכון!',
+      confirmLabel: 'יצירת בן משפחה',
+      bodyHTML: `
+        <div class="space-y-3">
+          <p class="text-xs text-slate-500">חילצתי את הפרטים מהדרכון — בדקו ותקנו אם צריך:</p>
+          <div><label class="tn-label">שם בעברית *</label><input id="pp-name-he" class="tn-input" value="${UI.esc(p.nameHe || '')}"></div>
+          <div><label class="tn-label">שם באנגלית (כמו בדרכון)</label><input id="pp-name-en" class="tn-input" dir="ltr" value="${UI.esc(p.nameEn || '')}"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="tn-label">תאריך לידה</label><input id="pp-birth" type="date" class="tn-input" value="${p.birthDate || ''}"></div>
+            <div><label class="tn-label">תוקף הדרכון</label><input id="pp-expiry" type="date" class="tn-input" value="${p.expiryDate || ''}"></div>
+          </div>
+          <div><label class="tn-label">מספר דרכון</label><input id="pp-number" class="tn-input" dir="ltr" value="${UI.esc(p.passportNumber || '')}"></div>
+          <p class="text-[11px] text-slate-400">🔐 צילום הדרכון יישמר <b>בכספת במכשיר הזה בלבד</b> ויוסר מהמסמכים — הוא לא יעלה לדרייב.</p>
+        </div>`,
+      onConfirm: async () => {
+        const nameHe = document.getElementById('pp-name-he').value.trim();
+        const nameEn = document.getElementById('pp-name-en').value.trim();
+        if (!nameHe && !nameEn) throw new Error('חסר שם');
+        // אם בן המשפחה כבר קיים (לפי שם) — מצרפים אליו את הדרכון במקום ליצור כפול
+        const members = await DB.all('members');
+        let member = members.find(m =>
+          (nameEn && (m.nameEn || '').toLowerCase() === nameEn.toLowerCase()) ||
+          (nameHe && m.nameHe === nameHe));
+        const existed = !!member;
+        if (member) {
+          if (!member.birthDate && document.getElementById('pp-birth').value) member.birthDate = document.getElementById('pp-birth').value;
+          if (!member.nameEn && nameEn) member.nameEn = nameEn;
+          await DB.put('members', member);
+        } else {
+          member = await DB.put('members', {
+            nameHe: nameHe || nameEn, nameEn,
+            birthDate: document.getElementById('pp-birth').value || null,
+          });
+        }
+        if (doc.blob) {
+          await DB.putRaw('vault', {
+            id: DB.uid(), memberId: member.id, blob: doc.blob, mimeType: doc.mimeType,
+            expiryDate: document.getElementById('pp-expiry').value || null,
+            passportNumber: document.getElementById('pp-number').value.trim() || null,
+            createdAt: Date.now(),
+          });
+        }
+        await DB.remove('documents', doc.id);
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+        UI.toast(existed ? `הדרכון צורף ל${member.nameHe} ✓` : `${member.nameHe} נוסף למשפחה + דרכון בכספת 🔒`, 'success');
+      },
+    });
+  }
+
+  return { strip, openProfile, editModal, pickerHTML, wirePicker, pickedIds, proposeFromPassport };
 })();
 window.Members = Members;

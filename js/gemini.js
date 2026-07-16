@@ -94,10 +94,10 @@ const Gemini = (() => {
     return call(payload);
   }
 
-  const EXTRACT_PROMPT = `אתה מחלץ נתונים ממסמכי נסיעות (כרטיסי טיסה, הזמנות מלון, ביטוח, שוברים).
+  const EXTRACT_PROMPT = `אתה מחלץ נתונים ממסמכי נסיעות (כרטיסי טיסה, הזמנות מלון, ביטוח, שוברים, דרכונים).
 נתח את המסמך והחזר JSON בלבד במבנה הבא (השמט שדות שאין להם מידע, תאריכים בפורמט YYYY-MM-DD, שעות HH:MM):
 {
- "category": "flight|stay|car|insurance|visa|attraction|other",
+ "category": "flight|stay|car|insurance|visa|attraction|passport|other",
  "title": "כותרת קצרה בעברית למסמך",
  "provider": "חברה/ספק",
  "confirmation": "קוד הזמנה/PNR",
@@ -105,7 +105,9 @@ const Gemini = (() => {
  "checkIn": "", "checkOut": "", "address": "",
  "dates": [{"date":"", "time":"", "label":"תיאור קצר בעברית"}],
  "notes": ""
-}`;
+}
+אם המסמך הוא דרכון: קבע category="passport" והוסף אובייקט passport:
+"passport": {"nameEn":"שם מלא באנגלית כמו בדרכון", "nameHe":"שם מלא בעברית אם מופיע", "birthDate":"", "passportNumber":"", "nationality":"", "expiryDate":"", "sex":"M|F"}`;
 
   async function extractFromText(text, fileName = '') {
     return json(`${EXTRACT_PROMPT}\n\nשם הקובץ: ${fileName}\n\nתוכן המסמך:\n${text.slice(0, 14000)}`);
