@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>המזוודה — TripNest</title>
+  <meta name="description" content="ניהול חופשות משפחתי — מסמכים, תוכנית טיול וסוכן AI">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="המזוודה">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Rubik', 'system-ui', 'sans-serif'] } } }
+    };
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased select-none">
+<script>window._BUNDLE_VERSION = '1.0.0';</script>
+
+<div class="max-w-lg mx-auto min-h-screen relative">
+
+  <!-- ============ HOME ============ -->
+  <div id="view-home" class="view pb-28">
+    <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
+      <div class="flex items-center justify-between px-5 py-3.5">
+        <div>
+          <h1 class="text-xl font-extrabold text-slate-800">המזוודה 🧳</h1>
+          <div class="text-[11px] text-slate-400 font-medium tracking-wide">TripNest</div>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center relative">
+          <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+          <span id="sync-dot" class="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-slate-300"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- family strip -->
+    <div id="home-family" class="flex gap-4 overflow-x-auto no-scrollbar px-5 py-3"></div>
+
+    <!-- hero trip card -->
+    <div id="home-hero" class="px-4 mt-1"></div>
+
+    <!-- travel-day mode -->
+    <div id="home-today" class="px-4 mt-4"></div>
+
+    <!-- quick actions -->
+    <div class="grid grid-cols-4 gap-3 px-4 mt-5">
+      <button data-qa="scan" class="bg-white rounded-2xl py-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center gap-2 active:scale-95 transition">
+        <span class="bg-indigo-50 text-indigo-600 rounded-full w-11 h-11 flex items-center justify-center text-xl">📷</span>
+        <span class="text-[11px] font-medium text-slate-600">סרוק מסמך</span>
+      </button>
+      <button data-qa="vault" class="bg-white rounded-2xl py-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center gap-2 active:scale-95 transition">
+        <span class="bg-indigo-50 text-indigo-600 rounded-full w-11 h-11 flex items-center justify-center text-xl">🛂</span>
+        <span class="text-[11px] font-medium text-slate-600">כספת דרכונים</span>
+      </button>
+      <button data-qa="packing" class="bg-white rounded-2xl py-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center gap-2 active:scale-95 transition">
+        <span class="bg-indigo-50 text-indigo-600 rounded-full w-11 h-11 flex items-center justify-center text-xl">📝</span>
+        <span class="text-[11px] font-medium text-slate-600">רשימת אריזה</span>
+      </button>
+      <button data-qa="budget" class="bg-white rounded-2xl py-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center gap-2 active:scale-95 transition">
+        <span class="bg-indigo-50 text-indigo-600 rounded-full w-11 h-11 flex items-center justify-center text-xl">💸</span>
+        <span class="text-[11px] font-medium text-slate-600">תקציב</span>
+      </button>
+    </div>
+
+    <!-- alerts -->
+    <div id="home-alerts" class="px-4 mt-5"></div>
+  </div>
+
+  <!-- ============ TRIPS LIST ============ -->
+  <div id="view-trips" class="view hidden pb-28">
+    <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
+      <div class="flex items-center justify-between px-5 py-4">
+        <h1 class="text-xl font-extrabold text-slate-800">הטיולים שלנו</h1>
+        <button id="btn-add-trip" class="bg-indigo-600 text-white w-10 h-10 rounded-full text-2xl font-light shadow-md active:scale-95 transition flex items-center justify-center pb-1">+</button>
+      </div>
+    </header>
+    <div id="trips-list" class="px-4 pt-2 space-y-4"></div>
+  </div>
+
+  <!-- ============ SINGLE TRIP ============ -->
+  <div id="view-trip" class="view hidden pb-28 min-h-screen">
+    <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
+      <div class="flex items-center gap-3 px-4 py-3">
+        <button id="trip-back" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 active:scale-95">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+        </button>
+        <div class="flex-1 min-w-0">
+          <h1 id="trip-title" class="font-bold text-slate-800 truncate"></h1>
+          <div id="trip-sub" class="text-[11px] text-slate-400 truncate"></div>
+        </div>
+        <div id="trip-travelers" class="flex -space-x-2 space-x-reverse"></div>
+        <button id="trip-edit" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 active:scale-95">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+        </button>
+      </div>
+      <nav id="trip-tabs" class="flex px-4 border-b border-slate-100">
+        <button data-tab="docs">מסמכים</button>
+        <button data-tab="timeline">ציר זמן</button>
+        <button data-tab="checklist">צ׳ק-ליסט</button>
+        <button data-tab="budget">תקציב</button>
+      </nav>
+    </header>
+    <div id="trip-panel" class="tab-panel px-4 pt-4"></div>
+    <button id="trip-fab" class="fixed bottom-24 left-5 z-40 bg-indigo-600 text-white w-14 h-14 rounded-full shadow-lg text-3xl font-light active:scale-95 transition flex items-center justify-center pb-1" style="margin-bottom: env(safe-area-inset-bottom)">+</button>
+  </div>
+
+  <!-- ============ AGENT ============ -->
+  <div id="view-agent" class="view hidden pb-28 flex flex-col" style="min-height: 100dvh">
+    <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
+      <div class="px-5 py-4 flex items-center gap-3">
+        <span class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-xl shadow-md">🦉</span>
+        <div>
+          <h1 class="font-bold text-slate-800">הסוכן שלנו</h1>
+          <div class="text-[11px] text-slate-400">מכיר את כל הטיולים והמסמכים</div>
+        </div>
+      </div>
+      <div id="agent-chips" class="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-3"></div>
+    </header>
+    <div id="agent-log" class="flex-1 px-4 py-4 overflow-y-auto"></div>
+    <form id="agent-form" class="fixed bottom-20 left-0 right-0 z-40 px-4 pb-safe">
+      <div class="max-w-lg mx-auto flex gap-2 bg-white rounded-2xl shadow-lg ring-1 ring-slate-100 p-1.5">
+        <input id="agent-input" class="flex-1 bg-transparent px-3 text-sm outline-none" placeholder="שאלו אותי כל דבר על הטיול…" autocomplete="off">
+        <button class="bg-indigo-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95 shrink-0">
+          <svg class="w-5 h-5 -scale-x-100" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ SETTINGS ============ -->
+  <div id="view-settings" class="view hidden pb-28">
+    <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
+      <div class="px-5 py-4"><h1 class="text-xl font-extrabold text-slate-800">הגדרות</h1></div>
+    </header>
+    <div id="settings-body" class="px-4 pt-2"></div>
+  </div>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-t border-slate-100 pb-safe">
+    <div class="max-w-lg mx-auto flex items-end justify-around px-2 pt-2 pb-2">
+      <button data-nav="home" class="nav-active flex flex-col items-center gap-0.5 w-16">
+        <svg class="nav-ico w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></svg>
+        <span class="text-[10px] font-medium">בית</span>
+      </button>
+      <button data-nav="trips" class="flex flex-col items-center gap-0.5 w-16">
+        <svg class="nav-ico w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m16.5 0v-4.25m-16.5 4.25v4.25m0-8.5V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.884m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+        <span class="text-[10px] font-medium">טיולים</span>
+      </button>
+      <button data-nav="agent" class="flex flex-col items-center gap-0.5 w-16 -mt-5">
+        <span class="bg-gradient-to-tr from-indigo-600 to-purple-500 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-md text-2xl">✨</span>
+        <span class="text-[10px] font-medium">סוכן AI</span>
+      </button>
+      <button data-nav="settings" class="flex flex-col items-center gap-0.5 w-16">
+        <svg class="nav-ico w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="text-[10px] font-medium">הגדרות</span>
+      </button>
+    </div>
+  </nav>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div id="modal-overlay" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center">
+  <div id="modal" class="bg-white w-full max-w-md rounded-t-[2rem] sm:rounded-[2rem] max-h-[88vh] flex flex-col shadow-2xl">
+    <div class="flex items-center justify-between px-5 pt-5 pb-3">
+      <h2 id="modal-title" class="font-bold text-lg text-slate-800"></h2>
+      <button id="modal-close" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 text-sm">✕</button>
+    </div>
+    <div id="modal-body" class="px-5 overflow-y-auto flex-1"></div>
+    <div class="flex gap-2 p-5 pb-safe">
+      <button id="modal-confirm" class="tn-btn-primary flex-1 bg-indigo-600"></button>
+      <button id="modal-cancel" class="tn-btn-secondary !bg-slate-100 !text-slate-500">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DOCUMENT VIEWER ============ -->
+<div id="viewer" class="hidden fixed inset-0 bg-slate-900/95 flex flex-col">
+  <div class="flex items-center gap-3 px-4 py-3 pt-safe">
+    <button id="viewer-close" class="w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center">✕</button>
+    <div id="viewer-title" class="text-white text-sm font-medium flex-1 truncate"></div>
+    <button id="viewer-download" class="w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center">⬇</button>
+  </div>
+  <div id="viewer-body" class="flex-1 overflow-y-auto p-4 pb-safe"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/db.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/gemini.js"></script>
+<script src="js/google.js"></script>
+<script src="js/members.js"></script>
+<script src="js/vault.js"></script>
+<script src="js/documents.js"></script>
+<script src="js/itinerary.js"></script>
+<script src="js/trips.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
