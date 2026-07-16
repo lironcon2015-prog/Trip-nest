@@ -135,17 +135,18 @@ const App = (() => {
       try { this.reg = await navigator.serviceWorker.register('./sw.js'); }
       catch (e) { console.warn('SW registration failed', e); return; }
 
-      // גרסה חדשה שכבר הותקנה ברקע ומחכה מהפעם הקודמת
-      if (this.reg.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
-
-      this.reg.addEventListener('updatefound', () => {
-        const w = this.reg.installing;
+      // controller קיים = זה עדכון ולא התקנה ראשונה
+      const track = (w) => {
         if (!w) return;
         w.addEventListener('statechange', () => {
-          // controller קיים = זה עדכון ולא התקנה ראשונה
           if (w.state === 'installed' && navigator.serviceWorker.controller) this.prompt(w);
         });
-      });
+      };
+      // כיסוי כל שלושת המצבים: גרסה שכבר מחכה, גרסה שכבר באמצע התקנה
+      // (updatefound שירה לפני שנרשמנו — הבאג שהעלים את הבאנר), וגרסה עתידית
+      if (this.reg.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
+      track(this.reg.installing);
+      this.reg.addEventListener('updatefound', () => track(this.reg.installing));
 
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -163,6 +164,8 @@ const App = (() => {
     // reg.update() מוריד sw.js חדש אם השתנה; version.json נותן מספר גרסה להצגה
     async check({ manual = false } = {}) {
       try { await this.reg?.update(); } catch { }
+      // רשת ביטחון: גרסה שמחכה בלי שנתפסה באירועים → באנר עכשיו
+      if (this.reg?.waiting && navigator.serviceWorker.controller) this.prompt(this.reg.waiting);
       let remote = null;
       try {
         const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
