@@ -1,10 +1,10 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.5.0';
+const CACHE_VERSION = '1.6.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
   './', './index.html', './css/style.css', './manifest.json', './version.json',
-  './js/db.js', './js/ui.js', './js/gemini.js', './js/google.js', './js/members.js', './js/vault.js',
+  './js/db.js', './js/ui.js', './js/gemini.js', './js/mrz.js', './js/google.js', './js/members.js', './js/vault.js',
   './js/documents.js', './js/itinerary.js', './js/trips.js', './js/agent.js', './js/settings.js', './js/app.js',
   './icons/icon-192.png', './icons/icon-512.png',
 ];
@@ -43,7 +43,7 @@ self.addEventListener('fetch', (e) => {
   // app shell: cache-first (version bump busts it); CDN assets: cache falling back to network
   e.respondWith(
     caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && (url.origin === location.origin || ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.tailwindcss.com', 'cdnjs.cloudflare.com'].includes(url.hostname))) {
+      if (res.ok && (url.origin === location.origin || ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'].includes(url.hostname))) {
         const clone = res.clone();
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
       }

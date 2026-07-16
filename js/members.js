@@ -146,7 +146,7 @@ const Members = (() => {
       confirmLabel: 'יצירת בן משפחה',
       bodyHTML: `
         <div class="space-y-3">
-          <p class="text-xs text-slate-500">חילצתי את הפרטים מהדרכון — בדקו ותקנו אם צריך:</p>
+          <p class="text-xs text-slate-500">הפרטים חולצו <b>מקומית במכשיר</b> (קריאת MRZ, בלי AI חיצוני) — בדקו והשלימו:</p>
           <div><label class="tn-label">שם בעברית *</label><input id="pp-name-he" class="tn-input" value="${UI.esc(p.nameHe || '')}"></div>
           <div><label class="tn-label">שם באנגלית (כמו בדרכון)</label><input id="pp-name-en" class="tn-input" dir="ltr" value="${UI.esc(p.nameEn || '')}"></div>
           <div class="grid grid-cols-2 gap-3">

@@ -206,8 +206,10 @@ globalThis.DB = {
 /* ---------- load the clients under test ---------- */
 (0, eval)(readFileSync(join(root, 'js/google.js'), 'utf-8'));
 (0, eval)(readFileSync(join(root, 'js/gemini.js'), 'utf-8'));
+(0, eval)(readFileSync(join(root, 'js/mrz.js'), 'utf-8'));
 const G = globalThis.G;
 const Gemini = globalThis.Gemini;
+const MRZ = globalThis.MRZ;
 
 /* ---------- tiny runner ---------- */
 let passed = 0, failed = 0;
@@ -386,6 +388,33 @@ await test('Gemini: דריסת רשימת מודלים + testModels', async () =
   const results = await Gemini.testModels('בדיקה');
   assert(results.length === 1 && !results[0].ok && results[0].error === 'not found', 'testModels result wrong');
   await Gemini.setModels(Gemini.DEFAULT_MODELS.slice());
+});
+
+/* ---------- MRZ (ICAO 9303 TD3 specimen) ---------- */
+await test('MRZ: פענוח דוגמת התקן הרשמית', async () => {
+  const p = MRZ.parse([
+    'P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<',
+    'L898902C36UTO7408122F1204159ZE184226B<<<<<10',
+  ]);
+  assert(p, 'specimen must parse');
+  assert(p.nameEn === 'ANNA MARIA ERIKSSON', 'name wrong: ' + p.nameEn);
+  assert(p.passportNumber === 'L898902C3', 'number wrong');
+  assert(p.birthDate === '1974-08-12', 'birth wrong: ' + p.birthDate);
+  assert(p.expiryDate === '2012-04-15', 'expiry wrong: ' + p.expiryDate);
+  assert(p.sex === 'F' && p.nationality === 'UTO', 'sex/nationality wrong');
+});
+
+await test('MRZ: ספרת ביקורת שגויה → דחייה (בלי לנחש)', async () => {
+  const bad = MRZ.parse([
+    'P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<',
+    'L898902C37UTO7408122F1204159ZE184226B<<<<<10',
+  ]);
+  assert(bad === null, 'corrupted MRZ must be rejected');
+});
+
+await test('MRZ: איתור בתוך טקסט OCR מרובה שורות + תיקון O/0', async () => {
+  const p = MRZ.fromText('PASSPORT\nsome noise\nP<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO74O8122F12O4159ZE184226B<<<<<10\n');
+  assert(p && p.birthDate === '1974-08-12' && p.expiryDate === '2012-04-15', 'fromText with O→0 fix failed');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

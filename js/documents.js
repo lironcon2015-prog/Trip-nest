@@ -109,7 +109,7 @@ const Documents = (() => {
       UI.toast(`${docs.length} מסמכים נוספו ✓`, 'success');
       G.Sync.queue();
       document.dispatchEvent(new CustomEvent('tn-data-changed'));
-      if (await Gemini.hasKey()) for (const d of docs) extractDoc(trip, d, { silent: true });
+      for (const d of docs) extractDoc(trip, d, { silent: true }); // passports work locally even without a Gemini key
     });
     input.click();
   }
@@ -125,12 +125,30 @@ const Documents = (() => {
     return 'other';
   }
 
-  /* --- Gemini extraction → structured data + proposed itinerary events --- */
+  /* --- extraction: passports locally (MRZ), everything else via Gemini --- */
   async function extractDoc(trip, doc, { silent = false } = {}) {
+    const mt = doc.mimeType || '';
+
+    // passports never reach Gemini: OCR the MRZ on-device. Images are always
+    // sniffed first; a doc already categorized as passport (filename) stays
+    // local even when the OCR fails — the member modal opens for manual fill.
+    if (doc.blob && (mt.startsWith('image/') || doc.category === 'passport')) {
+      const isHinted = doc.category === 'passport';
+      let mrz = null;
+      if (mt.startsWith('image/')) {
+        try { mrz = await MRZ.fromImage(doc.blob, { thorough: isHinted }); } catch { }
+      }
+      if (mrz || isHinted) {
+        doc.category = 'passport';
+        await DB.put('documents', doc);
+        Members.proposeFromPassport(doc, mrz || {});
+        return;
+      }
+    }
+
     if (!(await Gemini.hasKey())) { if (!silent) throw new Error('חסר מפתח Gemini — הוסיפו בהגדרות'); return; }
     try {
       let extracted = null;
-      const mt = doc.mimeType || '';
       if (mt === 'application/pdf' && doc.blob) {
         const text = await UI.pdfText(doc.blob);
         extracted = text.trim().length > 40
@@ -142,8 +160,8 @@ const Documents = (() => {
         extracted = await Gemini.extractFromText(await doc.blob.text(), doc.fileName);
       }
       if (!extracted) { if (!silent) UI.toast('לא הצלחתי לחלץ נתונים מהמסמך', 'warning'); return; }
-      // passport → offer to create a family member; the photo moves to the
-      // local-only vault and the doc never reaches the shared Drive folder
+      // safety net: a passport that slipped past the local sniff (e.g. inside
+      // a PDF) still lands in the member flow instead of the trip documents
       if (extracted.category === 'passport') {
         doc.category = 'passport';
         await DB.put('documents', doc);
@@ -278,7 +296,7 @@ const Documents = (() => {
             }));
             files++;
           }
-          if (await Gemini.hasKey()) for (const d of newDocs) extractDoc(trip, d, { silent: true });
+          for (const d of newDocs) extractDoc(trip, d, { silent: true });
         }
         G.Sync.queue();
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
