@@ -141,7 +141,7 @@ const Documents = (() => {
       if (mrz || isHinted) {
         doc.category = 'passport';
         await DB.put('documents', doc);
-        Members.proposeFromPassport(doc, mrz || {});
+        Members.proposeFromPassport({ blob: doc.blob, mimeType: doc.mimeType, docId: doc.id }, mrz || {});
         return;
       }
     }
@@ -165,7 +165,7 @@ const Documents = (() => {
       if (extracted.category === 'passport') {
         doc.category = 'passport';
         await DB.put('documents', doc);
-        Members.proposeFromPassport(doc, extracted.passport || {});
+        Members.proposeFromPassport({ blob: doc.blob, mimeType: doc.mimeType, docId: doc.id }, extracted.passport || {});
         return;
       }
       doc.extracted = extracted;

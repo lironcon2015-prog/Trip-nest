@@ -58,8 +58,11 @@ const Vault = (() => {
         <div class="bg-amber-50 text-amber-700 text-xs p-3 rounded-xl mb-4 flex gap-2 items-start">
           <span>🔐</span><span>הצילומים נשמרים <b>במכשיר הזה בלבד</b> — לא עולים לדרייב, לא נשלחים ל-AI ולא נכללים בגיבויים.</span>
         </div>
-        <div class="space-y-3">${rows || UI.emptyState('👨‍👩‍👧‍👦', 'הוסיפו קודם בני משפחה במסך הבית')}</div>`,
+        <button id="vault-new-passport" class="tn-btn-primary w-full mb-4">🛂 העלאת דרכון — יצירת בן משפחה</button>
+        <div class="space-y-3">${rows || UI.emptyState('👨‍👩‍👧‍👦', 'אין עדיין בני משפחה', 'העלו דרכון בכפתור למעלה — בן המשפחה ייווצר אוטומטית מהפרטים שבו')}</div>`,
     });
+
+    document.getElementById('vault-new-passport').addEventListener('click', newFromPassport);
 
     const all = await DB.allRaw('vault');
     all.forEach(v => {
@@ -81,6 +84,22 @@ const Vault = (() => {
     if (months < 6) return 'bg-red-600 text-white';
     if (months < 12) return 'bg-amber-500 text-white';
     return 'bg-black/60 text-white';
+  }
+
+  /* passport → new family member: local MRZ read, then the member modal */
+  function newFromPassport() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.addEventListener('change', async () => {
+      const f = input.files[0];
+      if (!f) return;
+      UI.toast('קורא את הדרכון במכשיר… 🔍', 'info');
+      let p = null;
+      try { p = await MRZ.fromImage(f, { thorough: true }); } catch { }
+      if (!p) UI.toast('לא הצלחתי לקרוא את שורות ה-MRZ — מלאו את הפרטים ידנית', 'warning');
+      Members.proposeFromPassport({ blob: f, mimeType: f.type }, p || {}, { onDone: () => open() });
+    });
+    input.click();
   }
 
   function capture(memberId) {

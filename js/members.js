@@ -139,8 +139,9 @@ const Members = (() => {
   }
   const pickedIds = (container) => [...container.querySelectorAll('.tn-member-pick.picked')].map(b => b.dataset.id);
 
-  /* --- passport upload → auto family member (photo goes to the local vault) --- */
-  function proposeFromPassport(doc, p) {
+  /* --- passport upload → auto family member (photo goes to the local vault)
+     source = { blob, mimeType, docId? } — docId is removed from documents on confirm --- */
+  function proposeFromPassport(source, p, { onDone } = {}) {
     UI.openModal({
       title: '🛂 זוהה דרכון!',
       confirmLabel: 'יצירת בן משפחה',
@@ -176,18 +177,19 @@ const Members = (() => {
             birthDate: document.getElementById('pp-birth').value || null,
           });
         }
-        if (doc.blob) {
+        if (source.blob) {
           await DB.putRaw('vault', {
-            id: DB.uid(), memberId: member.id, blob: doc.blob, mimeType: doc.mimeType,
+            id: DB.uid(), memberId: member.id, blob: source.blob, mimeType: source.mimeType,
             expiryDate: document.getElementById('pp-expiry').value || null,
             passportNumber: document.getElementById('pp-number').value.trim() || null,
             createdAt: Date.now(),
           });
         }
-        await DB.remove('documents', doc.id);
+        if (source.docId) await DB.remove('documents', source.docId);
         G.Sync.queue();
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
         UI.toast(existed ? `הדרכון צורף ל${member.nameHe} ✓` : `${member.nameHe} נוסף למשפחה + דרכון בכספת 🔒`, 'success');
+        if (onDone) onDone();
       },
     });
   }
