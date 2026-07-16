@@ -201,10 +201,10 @@ const Trips = (() => {
           </div>
         </div>
         <div class="space-y-1.5">${l.items.map(i => `
-          <label class="flex items-center gap-2.5 py-1">
+          <div class="flex items-center gap-2.5 py-1">
             <input type="checkbox" class="cl-item accent-indigo-600 w-4 h-4 rounded" data-list="${l.id}" data-item="${i.id}" ${i.done ? 'checked' : ''}>
-            <span class="text-sm ${i.done ? 'line-through text-slate-300' : 'text-slate-700'}">${UI.esc(i.text)}</span>
-          </label>`).join('')}</div>
+            <button type="button" class="cl-item-text flex-1 text-right text-sm ${i.done ? 'line-through text-slate-300' : 'text-slate-700'}" data-list="${l.id}" data-item="${i.id}">${UI.esc(i.text)}</button>
+          </div>`).join('')}</div>
         <form class="cl-add-form flex gap-2 mt-3" data-list="${l.id}">
           <input class="tn-input !py-2 text-sm flex-1" placeholder="פריט חדש…">
           <button class="bg-slate-100 text-slate-600 px-3.5 rounded-xl text-sm font-medium">+</button>
@@ -226,8 +226,37 @@ const Trips = (() => {
       await DB.put('checklists', l); G.Sync.queue();
       renderChecklist(trip, panel);
     }));
+    panel.querySelectorAll('.cl-item-text').forEach(b => b.addEventListener('click', () =>
+      editChecklistItemModal(trip, panel, b.dataset.list, b.dataset.item)));
     panel.querySelectorAll('.cl-del').forEach(b => b.addEventListener('click', () =>
       UI.confirm('למחוק את הרשימה?', async () => { await DB.remove('checklists', b.dataset.id); G.Sync.queue(); renderChecklist(trip, panel); })));
+  }
+
+  async function editChecklistItemModal(trip, panel, listId, itemId) {
+    const l = await DB.get('checklists', listId);
+    const it = l?.items.find(i => i.id === itemId);
+    if (!it) return;
+    UI.openModal({
+      title: 'עריכת פריט',
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <div><label class="tn-label">שם הפריט</label><input id="cli-text" class="tn-input" value="${UI.esc(it.text)}"></div>
+        <button id="cli-delete" class="mt-4 w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">🗑️ הסרת הפריט מהרשימה</button>`,
+      onConfirm: async () => {
+        const text = document.getElementById('cli-text').value.trim();
+        if (!text) throw new Error('חסר שם לפריט');
+        it.text = text;
+        await DB.put('checklists', l); G.Sync.queue();
+        renderChecklist(trip, panel);
+      },
+    });
+    document.getElementById('cli-delete').addEventListener('click', async () => {
+      l.items = l.items.filter(i => i.id !== itemId);
+      await DB.put('checklists', l); G.Sync.queue();
+      UI.closeModal();
+      UI.toast('הפריט הוסר ✓', 'success');
+      renderChecklist(trip, panel);
+    });
   }
 
   function addChecklistModal(trip) {
