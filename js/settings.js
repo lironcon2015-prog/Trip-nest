@@ -11,6 +11,7 @@ const Settings = (() => {
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
     ]);
     const keywords = await G.gmail.keywords();
+    const negKeywords = await G.gmail.negKeywords();
     const geminiModels = await Gemini.models();
 
     el.innerHTML = `
@@ -63,6 +64,17 @@ const Settings = (() => {
           <button class="tn-btn-secondary">הוספה</button>
         </form>
         <button id="st-kw-reset" class="text-[11px] text-slate-400 mt-2">איפוס לברירת המחדל</button>
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <div class="text-xs font-semibold text-slate-600 mb-1">🚫 סינון החוצה</div>
+          <p class="text-[11px] text-slate-400 mb-2">מיילים שמכילים מילים אלה יוסתרו מהתוצאות — למשל שמות חנויות שמציפות אתכם ("זארה", "קולנוע").</p>
+          <div class="flex flex-wrap gap-1.5 mb-2">${negKeywords.map((k, i) => `
+            <span class="inline-flex items-center gap-1 bg-red-50 text-red-500 text-xs px-2.5 py-1 rounded-full">
+              ${UI.esc(k)}<button class="nkw-del text-red-300" data-i="${i}">✕</button></span>`).join('') || '<span class="text-[11px] text-slate-300">אין מילות סינון</span>'}</div>
+          <form id="st-nkw-form" class="flex gap-2">
+            <input id="st-nkw-input" class="tn-input !py-2 text-sm flex-1" placeholder="מילה לסינון…">
+            <button class="tn-btn-secondary">הוספה</button>
+          </form>
+        </div>
       </section>
 
       <!-- Gemini -->
@@ -196,6 +208,20 @@ const Settings = (() => {
     document.getElementById('st-kw-reset').addEventListener('click', async () => {
       await DB.settings.set('keywords', [...G.DEFAULT_KEYWORDS]); await DB.touchShared(); G.Sync.queue();
       UI.toast('מילות המפתח אופסו', 'success'); render();
+    });
+    document.querySelectorAll('.nkw-del').forEach(b => b.addEventListener('click', async () => {
+      const kw = await G.gmail.negKeywords();
+      kw.splice(+b.dataset.i, 1);
+      await DB.settings.set('negKeywords', kw); await DB.touchShared(); G.Sync.queue();
+      render();
+    }));
+    document.getElementById('st-nkw-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const val = document.getElementById('st-nkw-input').value.trim();
+      if (!val) return;
+      const kw = await G.gmail.negKeywords();
+      if (!kw.includes(val)) { kw.push(val); await DB.settings.set('negKeywords', kw); await DB.touchShared(); G.Sync.queue(); }
+      render();
     });
 
     /* gemini */

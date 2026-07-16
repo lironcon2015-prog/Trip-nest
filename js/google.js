@@ -5,11 +5,13 @@
 const G = (() => {
   const DB_FILE = 'tripnest-db.json';
 
+  // deliberately no bare 'הזמנה'/'שובר'/'ויזה'/'visa' — they match every online
+  // purchase, coupon and credit-card email; use the ad-hoc search for edge cases
   const DEFAULT_KEYWORDS = [
-    'טיסה', 'כרטיס טיסה', 'אישור הזמנה', 'הזמנה', 'מלון', 'שובר', 'ביטוח נסיעות',
-    'צ׳ק אין', 'כרטיס עלייה למטוס', 'השכרת רכב', 'ויזה',
-    'flight', 'e-ticket', 'boarding pass', 'booking confirmation', 'reservation',
-    'hotel', 'itinerary', 'voucher', 'check-in', 'travel insurance', 'car rental', 'visa',
+    'טיסה', 'כרטיס טיסה', 'אישור הזמנה', 'מלון', 'ביטוח נסיעות',
+    'צ׳ק אין', 'כרטיס עלייה למטוס', 'השכרת רכב', 'אשרת כניסה',
+    'flight', 'e-ticket', 'boarding pass', 'booking confirmation',
+    'hotel', 'itinerary', 'check-in', 'travel insurance', 'car rental',
   ];
 
   /* --- bridge transport ---
@@ -157,13 +159,16 @@ const G = (() => {
       if (!kw || !kw.length) { kw = [...DEFAULT_KEYWORDS]; await DB.settings.set('keywords', kw); await DB.touchShared(); }
       return kw;
     },
-    buildQuery(keywords, { after = null, before = null, newerDays = 180, attachmentsOnly = false } = {}) {
+    // shared exclusion list — emails containing these words are filtered out of every scan
+    async negKeywords() { return (await DB.settings.get('negKeywords')) || []; },
+    buildQuery(keywords, { after = null, before = null, newerDays = 180, attachmentsOnly = false, exclude = [] } = {}) {
       const kw = '(' + keywords.map(k => `"${k}"`).join(' OR ') + ')';
       let q = kw;
       if (after) q += ` after:${after.replaceAll('-', '/')}`;
       if (before) q += ` before:${before.replaceAll('-', '/')}`;
       if (!after && !before) q += ` newer_than:${newerDays}d`;
       if (attachmentsOnly) q += ' has:attachment';
+      for (const x of exclude) q += ` -"${x}"`;
       return q;
     },
     // מזהי הודעות מהתיבה של בן/בת הזוג מקבלים קידומת 'p:' — כך getFull/getAttachment

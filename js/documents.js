@@ -255,6 +255,7 @@ const Documents = (() => {
           after: document.getElementById('ei-after').value || null,
           before: document.getElementById('ei-before').value || null,
           attachmentsOnly: document.getElementById('ei-attach').checked,
+          exclude: adhoc ? [] : await G.gmail.negKeywords(),
         });
         const results = await G.gmail.search(q);
         showEmailResults(trip, results);

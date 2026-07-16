@@ -269,6 +269,12 @@ await test('שאילתת חיפוש: חד-פעמי + רק עם קבצים מצו
   assert(!q2.includes('has:attachment'), 'attachment filter must be opt-in');
 });
 
+await test('שאילתת חיפוש: מילות סינון-החוצה', async () => {
+  const q = G.gmail.buildQuery(['טיסה'], { after: '2026-06-01', exclude: ['זארה', 'בית קולנוע'] });
+  assert(q.includes('-"זארה"') && q.includes('-"בית קולנוע"'), 'exclusions missing: ' + q);
+  assert((await G.gmail.negKeywords()).length === 0, 'negKeywords must default to empty');
+});
+
 await test('ייבוא מייל: גוף + קובץ מצורף', async () => {
   const full = await G.gmail.getFull('msg-1');
   const parts = G.gmail.walkParts(full.payload);
