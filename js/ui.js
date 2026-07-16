@@ -200,6 +200,16 @@ const UI = (() => {
 
   const spinner = '<span class="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin align-middle"></span>';
 
+  // instant tap feedback for async buttons: spinner + lock against double-taps
+  async function busy(btn, fn) {
+    if (!btn || btn.disabled) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="tn-spin"></span>';
+    try { return await fn(); }
+    finally { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
   function init() {
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -224,7 +234,7 @@ const UI = (() => {
   return {
     esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText,
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
-    fileToDataURL, avatarHTML, emptyState, spinner,
+    fileToDataURL, avatarHTML, emptyState, spinner, busy,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, init,
   };
 })();

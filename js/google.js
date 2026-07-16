@@ -98,7 +98,7 @@ const G = (() => {
     async isReady() { return (await isConfigured()) && !!(await DB.settings.get('driveFolderId')); },
 
     async run({ silent = true } = {}) {
-      if (_syncing) return { skipped: true };
+      if (_syncing) { if (!silent) UI.toast('סנכרון כבר מתבצע…', 'info'); return { skipped: true }; }
       if (!(await this.isReady())) { if (!silent) UI.toast('הגשר לא הוגדר — פתחו את ההגדרות', 'warning'); return { skipped: true }; }
       _syncing = true;
       document.dispatchEvent(new CustomEvent('tn-sync-state', { detail: 'start' }));

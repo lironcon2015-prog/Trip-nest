@@ -119,21 +119,21 @@ const Settings = (() => {
       UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
 
-    document.getElementById('st-ping-bridge').addEventListener('click', async () => {
+    document.getElementById('st-ping-bridge').addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
       try {
         await saveBridgeInputs();
         const out = await G.ping();
         UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
-      } catch (e) { UI.toast(e.message, 'error'); }
-    });
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }));
 
-    document.getElementById('st-ping-partner').addEventListener('click', async () => {
+    document.getElementById('st-ping-partner').addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
       try {
         await saveBridgeInputs();
         const out = await G.ping({ account: 'partner' });
         UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
-      } catch (e) { UI.toast(e.message, 'error'); }
-    });
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }));
 
     document.getElementById('st-create-folder').addEventListener('click', () => {
       UI.openModal({
@@ -175,7 +175,8 @@ const Settings = (() => {
       });
     });
 
-    document.getElementById('st-sync-now').addEventListener('click', () => G.Sync.run({ silent: false }).then(render));
+    document.getElementById('st-sync-now').addEventListener('click', (e) =>
+      UI.busy(e.currentTarget, () => G.Sync.run({ silent: false })).then(render));
 
     /* keywords */
     document.querySelectorAll('.kw-del').forEach(b => b.addEventListener('click', async () => {
