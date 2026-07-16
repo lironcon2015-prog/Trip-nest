@@ -1,26 +1,39 @@
 ---
 name: token-efficient-workflow
-description: Mandatory working style for every session and every turn in this project — focused reads, zero filler, surgical edits, quiet finish. Apply to every response unless the user explicitly asks to deviate for a specific task.
+description: Mandatory working style for every session and every turn in this project — minimum tokens, targeted reads, surgical edits, silent completion. Apply to every response unless the user explicitly asks to deviate for a specific task.
 ---
 
-# Token-efficient workflow
+# Token-Efficient Workflow
 
-## קריאות ממוקדות
-- חפש לפני שאתה קורא: Grep/Glob כדי לאתר את המקום המדויק, ורק אז Read — עם offset/limit בקבצים גדולים.
-- קרא רק מה שנדרש למשימה הנוכחית. בלי קריאות "ליתר ביטחון" ובלי סריקת קבצים שלמים כשמספיק קטע.
-- אל תקרא קובץ מחדש אחרי Edit/Write מוצלח — מצב הקובץ כבר ידוע.
-- קריאות/פעולות בלתי-תלויות — במקביל באותו תור.
+## Core Directive
+Deliver accurate code using the minimum tokens possible. Silence is preferred over explanation.
 
-## אפס filler
-- בלי הקדמות, בלי חזרה על הבקשה של המשתמש, בלי "מעולה!" ובלי סיכומי ביניים מנופחים.
-- עדכון ביניים רק כשמשהו מהותי התגלה או שהכיוון השתנה — משפט אחד.
-- תשובה סופית קצרה בעברית: מה נעשה, איפה, מה התוצאה. משפט עדיף על רשימה; רשימה עדיף על טבלה.
+## Tool & Edit Rules
+- **Map via MD, then safe search.** Read structural docs (e.g., `README.md`) first. Then use tightly scoped `grep` or `ls` (e.g., `grep -n "exactName"`, `head -20`) to locate exact lines. Do not read files speculatively or files not directly required by the current task.
+- **Targeted reads only.** Never read a full file if a `view_range` suffices. State: "Reading lines X–Y in Z — [reason]."
+- **No redundant reads.** If a file is already in session context, work from it. Do not re-read.
+- **Surgical edits.** `str_replace` on specific blocks > full file rewrite. Never rewrite a full file for a minor change.
 
-## Edits כירורגיים
-- Edit על המחרוזת המינימלית הייחודית; Write מלא רק לקובץ חדש או שכתוב מלא מכוון.
-- אין רפורמט, שינויי סגנון או "שיפורים" בקוד שהמשימה לא נגעה בו.
-- קוד חדש מחקה את הסגנון הקיים בקובץ (צפיפות הערות, שמות, idioms).
+## Output & Communication Rules
+- **Zero filler.** No greetings, transitions, or closing remarks. Start with code or the direct answer.
+- **Silent completion.** After a file edit, let the diff speak. No "Changes applied." or summary. For multi-step tasks, one line only if failure is ambiguous.
+- **Silent planning.** For simple fixes: execute directly, no plan. For complex refactors only: use `<thinking>` with max 3 bullets. Never output the plan.
+- **Batch questions.** Group all clarifications into one bulleted message. Never ask across multiple turns.
+- **Explain why, never what.** Only when logic is counter-intuitive. Max 2 bullets.
 
-## סיום שקט
-- סדר סיום קבוע: בדיקות (`node tests/smoke.mjs`, `node --check`) → הקפצת גרסה בשלושת הקבצים → commit → merge ל-`main` → push. בלי לשאול אישור על הצעדים האלה.
-- דיווח סיום בשורות ספורות. בלי הצעות יזומות לעבודות המשך ובלי שאלות פתוחות כשאין החלטה אמיתית למשתמש.
+## Anti-patterns
+1. Reading full files instead of using view ranges.
+2. Outputting unchanged code alongside a fix.
+3. Running broad `grep` that returns hundreds of lines.
+4. Saying "I will now…" or "I have updated…".
+5. Planning or using `<thinking>` for trivial tasks.
+
+## Quick Reference
+
+| Situation      | Do                                   | Don't                         |
+|----------------|--------------------------------------|-------------------------------|
+| Bug fix        | Show only the fixed function         | Reprint the whole file        |
+| New feature    | Show new method + import if needed   | Reprint the class             |
+| Refactor       | Before → after for changed blocks    | Narrate every change          |
+| Code question  | Direct answer + minimal example      | Long preamble                 |
+| Find code      | Scoped `grep -n "specific"` + range  | Broad grep or full file read  |
