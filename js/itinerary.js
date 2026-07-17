@@ -110,6 +110,53 @@ const Itinerary = (() => {
       const doc = await DB.get('documents', b.dataset.eventdoc);
       if (doc) UI.viewer.open(doc);
     }));
+    container.querySelectorAll('[data-eventcost]').forEach(b => b.addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      const ev = events.find(e => e.id === b.dataset.eventcost);
+      if (ev) quickCostModal(trip, ev, expByEvent[ev.id] || null);
+    }));
+    // auto reminders aren't stored — editing them means editing the flight they derive from
+    container.querySelectorAll('[data-eventauto]').forEach(b => b.addEventListener('click', () => {
+      const src = events.find(e => e.id === b.dataset.eventauto.replace(/^auto-/, ''));
+      if (src) UI.confirm('זו תזכורת אוטומטית שנגזרת מזמן הטיסה. לערוך את אירוע הטיסה?', () => editModal(trip, src));
+    }));
+  }
+
+  /* one-tap cost on an existing event → linked budget expense */
+  async function quickCostModal(trip, ev, linked = null) {
+    UI.openModal({
+      title: linked ? 'עריכת עלות' : 'הוספת עלות',
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <p class="text-sm text-slate-500 mb-3">${UI.esc(ev.title)}</p>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2 min-w-0"><label class="tn-label">סכום *</label><input id="qc-amount" type="number" step="0.01" min="0" class="tn-input" dir="ltr" value="${linked?.amount ?? ''}" autofocus></div>
+          <div class="min-w-0"><label class="tn-label">מטבע</label><select id="qc-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(linked?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-2">העלות נכנסת לתקציב הטיול בקטגוריה המתאימה.</p>
+        ${linked ? `<button id="qc-remove" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium mt-2">${UI.icon('trash', 'w-4 h-4')} הסרת העלות</button>` : ''}`,
+      onConfirm: async () => {
+        const amount = parseFloat(document.getElementById('qc-amount').value);
+        if (!(amount > 0)) throw new Error('חסר סכום');
+        const target = linked ||
+          (ev.docId ? (await DB.byTrip('expenses', trip.id)).find(x => x.docId === ev.docId && !x.eventId) : null);
+        await DB.put('expenses', {
+          ...(target || { tripId: trip.id }), eventId: ev.id, title: ev.title, amount,
+          currency: document.getElementById('qc-cur').value,
+          category: target?.category || EVENT_TO_EXPENSE_CAT[ev.type] || 'other',
+          date: ev.date, docId: ev.docId || target?.docId || null,
+        });
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+        UI.toast('העלות נשמרה בתקציב ✓', 'success');
+      },
+    });
+    document.getElementById('qc-remove')?.addEventListener('click', () =>
+      UI.confirm('להסיר את העלות מהאירוע ומהתקציב?', async () => {
+        await DB.remove('expenses', linked.id);
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+      }));
   }
 
   function eventCard(e, last = false, cost = null) {
@@ -124,12 +171,14 @@ const Itinerary = (() => {
         </div>
         <div class="flex-1 min-w-0 ${last ? '' : 'pb-4'}">
           <div class="flex items-start justify-between gap-2">
-            <button class="min-w-0 text-right" ${e.computed ? '' : `data-event="${e.id}"`}>
+            <button class="flex-1 min-w-0 text-right" ${e.computed ? `data-eventauto="${e.id}"` : `data-event="${e.id}"`}>
               <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} truncate pt-0.5">${UI.esc(e.title)}</span>
             </button>
             <span class="flex items-center gap-2 shrink-0">
               ${e.docId ? `<button class="text-slate-300 -mt-0.5" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-[18px] h-[18px]')}</button>` : ''}
-              ${cost ? `<span class="text-[11px] text-slate-400 pt-1" dir="ltr">${UI.fmtMoney(cost.amount, UI.normCur(cost.currency))}</span>` : ''}
+              ${cost
+                ? `<button class="text-[11px] text-slate-400 pt-1 underline decoration-slate-200 underline-offset-2" dir="ltr" data-eventcost="${e.id}" title="עריכת העלות">${UI.fmtMoney(cost.amount, UI.normCur(cost.currency))}</button>`
+                : (!e.computed && e.type !== 'deadline' ? `<button class="text-[11px] text-slate-300 pt-1" data-eventcost="${e.id}" title="הוספת עלות">+ עלות</button>` : '')}
               ${e.time ? `<span class="text-[11px] text-slate-400 flex items-center gap-1 pt-1">${e.time} ${UI.icon('clock', 'w-3 h-3')}</span>` : ''}
             </span>
           </div>
