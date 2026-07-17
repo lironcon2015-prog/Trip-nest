@@ -270,7 +270,7 @@ const Documents = (() => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  function showEmailResults(trip, results) {
+  async function showEmailResults(trip, results) {
     if (!results.length) {
       UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'נסו להרחיב את טווח התאריכים או להוסיף מילות מפתח בהגדרות') });
       return;
