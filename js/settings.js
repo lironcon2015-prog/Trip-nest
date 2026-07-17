@@ -114,7 +114,7 @@ const Settings = (() => {
       </section>
 
       <div class="text-center pb-4">
-        <div class="text-[11px] text-slate-300">המזוודה · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>
+        <div class="text-[11px] text-slate-300">צ׳קין · TripNest v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>
         <button id="st-check-update" class="text-[11px] text-indigo-400 font-medium mt-1.5">🔄 בדיקת עדכון גרסה</button>
       </div>`;
 
@@ -153,7 +153,7 @@ const Settings = (() => {
         confirmLabel: 'יצירה ושיתוף',
         bodyHTML: `
           <div class="space-y-3">
-            <div><label class="tn-label">שם התיקייה</label><input id="cf-name" class="tn-input" value="TripNest — המזוודה"></div>
+            <div><label class="tn-label">שם התיקייה</label><input id="cf-name" class="tn-input" value="TripNest — צ׳קין"></div>
             <div><label class="tn-label">אימייל של בן/בת הזוג לשיתוף</label><input id="cf-email" type="email" dir="ltr" class="tn-input" placeholder="partner@gmail.com"></div>
             <p class="text-[11px] text-slate-400">התיקייה תיווצר בדרייב שלך ותשותף לעריכה. במכשיר השני לוחצים "🔗 התחבר לקיימת".</p>
           </div>`,
@@ -174,7 +174,7 @@ const Settings = (() => {
         confirmLabel: 'חיפוש והתחברות',
         bodyHTML: `
           <div class="space-y-3">
-            <div><label class="tn-label">שם התיקייה (כפי שנוצרה במכשיר הראשון)</label><input id="cn-name" class="tn-input" value="TripNest — המזוודה"></div>
+            <div><label class="tn-label">שם התיקייה (כפי שנוצרה במכשיר הראשון)</label><input id="cn-name" class="tn-input" value="TripNest — צ׳קין"></div>
             <p class="text-[11px] text-slate-400">הגשר יאתר את התיקייה ששותפה אליך בדרייב ויתחבר אליה.</p>
           </div>`,
         onConfirm: async () => {

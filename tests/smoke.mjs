@@ -239,15 +239,15 @@ await test('טוקן שגוי נדחה', async () => {
 });
 
 await test('יצירת תיקייה משותפת + שיתוף (מכשיר ראשון)', async () => {
-  const out = await G.setup.create({ name: 'TripNest — המזוודה', partnerEmail: 'partner@example.com' });
+  const out = await G.setup.create({ name: 'TripNest — צ׳קין', partnerEmail: 'partner@example.com' });
   assert(out.folderId, 'no folderId');
   assert(bridgeState.folders[out.folderId].shares.includes('partner@example.com'), 'not shared with partner');
   assert((await DB.settings.get('driveFolderId')) === out.folderId, 'folderId not saved');
 });
 
 await test('איתור תיקייה קיימת (מכשיר שני)', async () => {
-  const out = await G.setup.connect({ name: 'TripNest — המזוודה' });
-  assert(out.folderName === 'TripNest — המזוודה', 'wrong folder found');
+  const out = await G.setup.connect({ name: 'TripNest — צ׳קין' });
+  assert(out.folderName === 'TripNest — צ׳קין', 'wrong folder found');
 });
 
 await test('סריקת Gmail לפי מילות מפתח', async () => {
