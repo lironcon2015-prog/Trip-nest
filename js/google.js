@@ -47,6 +47,22 @@ const G = (() => {
 
   const ping = ({ account = 'me' } = {}) => call('ping', {}, { account }); // → { email, version }
 
+  // the connected account's address. Old bridge deployments return an empty email
+  // on ping (Apps Script getActiveUser limitation) — infer it from the mailbox
+  // itself: the From of any sent message is the account owner.
+  async function accountEmail({ account = 'me' } = {}) {
+    try {
+      const p = await ping({ account });
+      if (p.email) return p.email;
+    } catch { return null; }
+    try {
+      const r = await call('gmailSearch', { q: 'in:sent', max: 1 }, { account });
+      const m = String((r.messages || [])[0]?.from || '').match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/);
+      if (m) return m[0];
+    } catch { }
+    return null;
+  }
+
   /* --- base64 helpers --- */
   const b64ToBlob = (data, mime = 'application/octet-stream') => {
     const bin = atob(data);
@@ -211,6 +227,6 @@ const G = (() => {
     },
   };
 
-  return { isConfigured, hasPartnerBridge, ping, call, setup, drive, Sync, gmail, DEFAULT_KEYWORDS };
+  return { isConfigured, hasPartnerBridge, ping, accountEmail, call, setup, drive, Sync, gmail, DEFAULT_KEYWORDS };
 })();
 window.G = G;

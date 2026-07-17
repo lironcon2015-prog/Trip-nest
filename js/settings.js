@@ -22,7 +22,7 @@ const Settings = (() => {
         <p class="text-[11px] text-slate-400 mb-3">הגשר הוא סקריפט קטן שרץ בחשבון Google שלכם (ראו README). הדביקו כאן את כתובתו ואת הטוקן הסודי שהגדרתם בו.</p>
         <div class="space-y-3">
           ${myEmail ? `<div class="flex items-center justify-between bg-emerald-50 text-emerald-700 text-xs rounded-xl p-2.5"><span>המכשיר הזה מחובר בתור:</span><b dir="ltr">${UI.esc(myEmail)}</b></div>`
-        : '<div class="bg-slate-50 text-slate-400 text-[11px] rounded-xl p-2.5">עוד לא ידוע איזה חשבון מחובר — לחצו "בדיקת חיבור" כדי לזהות</div>'}
+        : `<div class="bg-slate-50 text-slate-400 text-[11px] rounded-xl p-2.5">${bridgeUrl && bridgeToken ? 'מזהה את החשבון המחובר…' : 'הגדירו את הגשר כדי לזהות את החשבון המחובר'}</div>`}
           <div><label class="tn-label">כתובת הגשר (Web app URL)</label>
             <input id="st-bridge-url" class="tn-input text-xs" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="${UI.esc(bridgeUrl || '')}"></div>
           <div><label class="tn-label">טוקן סודי</label>
@@ -136,8 +136,17 @@ const Settings = (() => {
       UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
 
-    // old bridge deployments report an empty email (Apps Script getActiveUser
-    // limitation) — fall back to asking once and storing the answer
+    // auto-identify the connected accounts in the background (no tap needed);
+    // stored once, then shown on every render
+    const autoDetect = async (settingKey, account) => {
+      const em = await G.accountEmail({ account }).catch(() => null);
+      if (em) { await DB.settings.set(settingKey, em); render(); }
+      return em;
+    };
+    if (!myEmail && bridgeUrl && bridgeToken) autoDetect('myEmail', 'me');
+    if (!partnerEmail && partnerUrl && partnerToken) autoDetect('partnerEmail', 'partner');
+
+    // very last resort (e.g. a mailbox with no sent mail): ask once and store
     const askEmail = (settingKey, title) => UI.openModal({
       title,
       confirmLabel: 'שמירה',
@@ -159,7 +168,8 @@ const Settings = (() => {
         const out = await G.ping();
         UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
         if (out.email) { await DB.settings.set('myEmail', out.email); render(); }
-        else if (!(await DB.settings.get('myEmail'))) askEmail('myEmail', 'איזה חשבון Google מחובר כאן?');
+        else if (!(await DB.settings.get('myEmail')) && !(await autoDetect('myEmail', 'me')))
+          askEmail('myEmail', 'איזה חשבון Google מחובר כאן?');
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
@@ -169,7 +179,8 @@ const Settings = (() => {
         const out = await G.ping({ account: 'partner' });
         UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
         if (out.email) { await DB.settings.set('partnerEmail', out.email); render(); }
-        else if (!(await DB.settings.get('partnerEmail'))) askEmail('partnerEmail', 'איזה חשבון מחובר בתיבה השנייה?');
+        else if (!(await DB.settings.get('partnerEmail')) && !(await autoDetect('partnerEmail', 'partner')))
+          askEmail('partnerEmail', 'איזה חשבון מחובר בתיבה השנייה?');
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 

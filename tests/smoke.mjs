@@ -230,6 +230,14 @@ await test('ping מחזיר את המייל המחובר', async () => {
   assert(out.version === '1.1.0', 'wrong version');
 });
 
+await test('accountEmail: מה-ping, וכשהוא ריק — היסק מ-in:sent', async () => {
+  assert(await G.accountEmail() === 'liron@example.com', 'should come from ping');
+  bridgeState.email = ''; // old bridge deployment: getActiveUser returns empty
+  const inferred = await G.accountEmail();
+  bridgeState.email = 'liron@example.com';
+  assert(inferred === 'no-reply@elal.co.il', 'should infer from sent-mail From, got: ' + inferred);
+});
+
 await test('טוקן שגוי נדחה', async () => {
   await DB.settings.set('bridgeToken', 'wrong-token');
   let err = null;
