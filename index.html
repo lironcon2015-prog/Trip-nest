@@ -33,7 +33,7 @@
   </script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased select-none">
-<script>window._BUNDLE_VERSION = '1.33.0';</script>
+<script>window._BUNDLE_VERSION = '1.34.0';</script>
 
 <div id="app-shell" class="max-w-lg mx-auto relative flex flex-col">
 <main id="app-scroll" class="flex-1 overflow-y-auto relative">
@@ -136,15 +136,30 @@
     <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
       <div class="px-5 py-4 flex items-center gap-3">
         <span class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-xl shadow-md">🦉</span>
-        <div>
+        <div class="flex-1 min-w-0">
           <h1 class="font-bold text-slate-800">הסוכן שלנו</h1>
           <div class="text-[11px] text-slate-400">מכיר את כל הטיולים והמסמכים</div>
         </div>
+        <button id="agent-search-btn" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 active:scale-95 shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/></svg>
+        </button>
+        <button id="agent-memory-btn" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-lg active:scale-95 shrink-0">🧠</button>
+      </div>
+      <div id="agent-search-bar" class="hidden px-4 pb-2">
+        <input id="agent-search-input" class="w-full bg-white rounded-xl px-3.5 py-2 text-sm ring-1 ring-slate-200 outline-none" placeholder="חיפוש בשיחה ובארכיון…" autocomplete="off">
       </div>
       <div id="agent-chips" class="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-3"></div>
     </header>
     <div id="agent-log" class="flex-1 px-4 py-4 overflow-y-auto"></div>
+    <button id="agent-jump" class="hidden fixed bottom-40 left-5 z-40 w-10 h-10 rounded-full bg-white shadow-lg ring-1 ring-slate-200 text-slate-500 flex items-center justify-center active:scale-95">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3"/></svg>
+    </button>
     <form id="agent-form" class="fixed bottom-20 left-0 right-0 z-40 px-4 pb-safe">
+      <div id="agent-quote" class="hidden max-w-lg mx-auto mb-1.5 bg-indigo-50 rounded-xl px-3.5 py-2 text-[11px] text-indigo-700 ring-1 ring-indigo-100 flex items-center gap-2">
+        <span class="shrink-0">↩</span>
+        <span id="agent-quote-text" class="flex-1 truncate"></span>
+        <button type="button" id="agent-quote-x" class="text-indigo-300 px-1">✕</button>
+      </div>
       <div class="max-w-lg mx-auto flex gap-2 bg-white rounded-2xl shadow-lg ring-1 ring-slate-100 p-1.5">
         <input id="agent-input" class="flex-1 bg-transparent px-3 text-sm outline-none" placeholder="שאלו אותי כל דבר על הטיול…" autocomplete="off">
         <button class="bg-indigo-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95 shrink-0">

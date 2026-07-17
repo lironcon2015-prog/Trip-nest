@@ -423,6 +423,15 @@ ${convo || '(אין)'}
   }
 
   /* --- UI --- */
+  let dayState = {};  // dayKey -> open? (default: only the latest day open)
+  let quote = null;   // bubble text picked as reply context
+
+  const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const dayLabel = (k) => k === 'older' ? 'שיחות קודמות' : UI.fmtDayHeader(k);
+  const visibleTurns = () => history
+    .map(t => ({ role: t.role, text: (t.parts || []).filter(p => p.text).map(p => p.text).join(''), day: t._ts ? dayKey(t._ts) : 'older' }))
+    .filter(t => t.text);
+
   async function render() {
     const chipsEl = document.getElementById('agent-chips');
     chipsEl.innerHTML = CHIPS.map(c =>
@@ -430,18 +439,74 @@ ${convo || '(אין)'}
     chipsEl.querySelectorAll('.agent-chip').forEach(b => b.addEventListener('click', () => send(b.textContent)));
     if (busy) return; // אל תדרוס את הלוג באמצע תור
     if (!historyLoaded) await loadHistory();
+    const q = document.getElementById('agent-search-input')?.value.trim();
+    if (q) { await renderSearch(q); return; }
     const log = document.getElementById('agent-log');
     log.innerHTML = '';
-    // rebuild visible conversation from persisted history (text turns only)
-    for (const turn of history) {
-      const text = (turn.parts || []).filter(p => p.text).map(p => p.text).join('');
-      if (!text) continue;
-      addBubble(turn.role === 'user' ? 'user' : 'model', turn.role === 'user' ? UI.esc(text) : mdLite(text));
+    // conversation grouped by day; each separator folds its day, only the latest open by default
+    const turns = visibleTurns();
+    const days = [...new Set(turns.map(t => t.day))];
+    const last = days[days.length - 1];
+    for (const day of days) {
+      const items = turns.filter(t => t.day === day);
+      const open = dayState[day] ?? (day === last);
+      const sep = document.createElement('button');
+      sep.className = 'w-full flex items-center gap-2 my-2 text-[11px] text-slate-400';
+      sep.innerHTML = `<span class="flex-1 h-px bg-slate-200"></span><span>${open ? '▾' : '◂'} ${dayLabel(day)} · ${items.length}</span><span class="flex-1 h-px bg-slate-200"></span>`;
+      sep.addEventListener('click', () => { dayState[day] = !open; render(); });
+      log.appendChild(sep);
+      if (open) items.forEach(t => addBubble(t.role === 'user' ? 'user' : 'model', t.role === 'user' ? UI.esc(t.text) : mdLite(t.text)));
     }
     if (!log.children.length) {
       addBubble('model', 'היי! אני העוזר של Navigo 🛫 אפשר לשאול אותי על הטיולים, המסמכים והתוכניות — או ללחוץ על אחת הפעולות למעלה.');
     }
+    log.scrollTop = log.scrollHeight;
+    updateJump();
     autoSummarize(); // background: condense trips that just became "past"
+  }
+
+  // keyword filter over the live window + the local archive mirror
+  async function renderSearch(q) {
+    const log = document.getElementById('agent-log');
+    log.innerHTML = '';
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    let hits = 0;
+    for (const t of visibleTurns()) {
+      if (!words.every(w => t.text.toLowerCase().includes(w))) continue;
+      hits++;
+      addBubble(t.role === 'user' ? 'user' : 'model', t.role === 'user' ? UI.esc(t.text) : mdLite(t.text));
+    }
+    const arch = await Archive.search(q, { limit: 10 });
+    if (arch.length) {
+      const sep = document.createElement('div');
+      sep.className = 'text-center text-[11px] text-slate-400 my-2';
+      sep.textContent = `🗄️ מהארכיון (${arch.length})`;
+      log.appendChild(sep);
+      for (const h of arch) {
+        addBubble(h.role === 'user' ? 'user' : 'model',
+          `<span class="block text-[10px] text-slate-400">${new Date(h.ts).toLocaleDateString('he-IL')}</span>${h.role === 'user' ? UI.esc(h.text) : mdLite(h.text)}`);
+      }
+    }
+    if (!hits && !arch.length) log.innerHTML = `<div class="text-center text-slate-400 text-sm py-8">אין תוצאות ל"${UI.esc(q)}"</div>`;
+    log.scrollTop = 0;
+  }
+
+  function updateJump() {
+    const log = document.getElementById('agent-log');
+    const btn = document.getElementById('agent-jump');
+    if (!btn) return;
+    btn.classList.toggle('hidden', log.scrollHeight - log.scrollTop - log.clientHeight < 250);
+  }
+
+  /* quote-and-reply: tap a bubble to attach it as context to the next message */
+  function setQuote(text) {
+    quote = text;
+    document.getElementById('agent-quote-text').textContent = text;
+    document.getElementById('agent-quote').classList.remove('hidden');
+  }
+  function clearQuote() {
+    quote = null;
+    document.getElementById('agent-quote').classList.add('hidden');
   }
 
   function addBubble(role, html) {
@@ -451,6 +516,10 @@ ${convo || '(אין)'}
       ? 'self-start bg-indigo-600 text-white rounded-2xl rounded-tr-md px-4 py-2.5 text-sm max-w-[85%] whitespace-pre-wrap'
       : 'self-end bg-white text-slate-700 rounded-2xl rounded-tl-md px-4 py-2.5 text-sm max-w-[85%] shadow-sm whitespace-pre-wrap';
     el.innerHTML = html;
+    el.addEventListener('click', () => {
+      const t = el.textContent.trim();
+      if (t) setQuote(t.slice(0, 200));
+    });
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
     return el;
@@ -491,6 +560,14 @@ ${convo || '(אין)'}
       addBubble('model', 'כדי שאוכל לעבוד צריך מפתח Gemini 🔑 — מוסיפים אותו בהגדרות (חינם ב-Google AI Studio).');
       return;
     }
+    // leaving search mode: restore the full log before appending the new exchange
+    const si = document.getElementById('agent-search-input');
+    if (si && si.value) {
+      si.value = '';
+      document.getElementById('agent-search-bar').classList.add('hidden');
+      await render();
+    }
+    if (quote) { text = `בהקשר להודעה קודמת: «${quote}»\n\n${text}`; clearQuote(); }
     busy = true;
     if (!historyLoaded) await loadHistory();
     const tripTag = await activeTripId(); // partitions this exchange's turns in the archive
@@ -552,10 +629,87 @@ ${convo || '(אין)'}
     }
   }
 
+  /* --- memory management screen --- */
+  async function memoryScreen() {
+    const notes = (await DB.settings.get('agentNotes')) || [];
+    const trips = await DB.all('trips');
+    const sums = await summaries();
+    const tripName = (id) => trips.find(t => t.id === id)?.name || 'טיול שנמחק';
+    const family = notes.filter(n => !n.tripId);
+    const byTrip = {};
+    notes.filter(n => n.tripId).forEach(n => (byTrip[n.tripId] = byTrip[n.tripId] || []).push(n));
+    const row = (n) => `
+      <div class="flex items-start gap-2 py-2 border-b border-slate-50 last:border-0 text-[13px]">
+        <span class="flex-1 text-slate-600 leading-snug">${UI.esc(n.note)}</span>
+        ${n.tripId ? `<button class="mn-fam shrink-0 text-[10px] text-indigo-400 font-medium" data-id="${n.id}">→ למשפחה</button>` : ''}
+        <button class="mn-del shrink-0 text-slate-300" data-id="${n.id}">✕</button>
+      </div>`;
+    UI.openModal({
+      title: '🧠 הזיכרון של הסוכן',
+      hideConfirm: true,
+      bodyHTML: `
+        <div class="pb-4 space-y-5">
+          <p class="text-[11px] text-slate-400">זיכרון משפחה מוזרק לסוכן תמיד; זיכרון טיול — רק כשהטיול רלוונטי. הכל משותף לשניכם.</p>
+          <div>
+            <div class="text-xs font-bold text-slate-500 mb-1">👨‍👩‍👧‍👦 זיכרון משפחה</div>
+            ${family.map(row).join('') || '<div class="text-[11px] text-slate-300">אין פתקים עדיין</div>'}
+          </div>
+          ${Object.entries(byTrip).map(([tid, ns]) => `
+            <div>
+              <div class="text-xs font-bold text-slate-500 mb-1">🧳 זיכרון טיול · ${UI.esc(tripName(tid))}</div>
+              ${ns.map(row).join('')}
+            </div>`).join('')}
+          <div>
+            <div class="text-xs font-bold text-slate-500 mb-1">🗄️ סיכומי טיולים</div>
+            ${trips.map(t => `
+              <div class="py-2 border-b border-slate-50 last:border-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-[13px] font-medium text-slate-600 flex-1">${UI.esc(t.name)}</span>
+                  <button class="mn-sum tn-btn-secondary !py-1 !px-2.5 !text-[10px]" data-id="${t.id}">${sums[t.id]?.text ? 'סכם מחדש' : 'סכם עכשיו'}</button>
+                </div>
+                ${sums[t.id]?.text ? `<div class="text-[11px] text-slate-400 leading-snug mt-1">${UI.esc(sums[t.id].text)}</div>` : ''}
+              </div>`).join('') || '<div class="text-[11px] text-slate-300">אין טיולים</div>'}
+            ${Archive.isUnsupported() ? '<div class="text-[10px] text-amber-500 mt-1.5">ארכיון השיחות נשמר במכשיר בלבד — פרסו גשר מעודכן (v1.3.0+) כדי לגבות אותו בדרייב.</div>' : ''}
+          </div>
+        </div>`,
+    });
+    const saveNotes = async (list) => {
+      await DB.settings.set('agentNotes', list);
+      await DB.touchShared();
+      G.Sync.queue();
+      memoryScreen();
+    };
+    document.querySelectorAll('.mn-del').forEach(b => b.addEventListener('click', async () =>
+      saveNotes(((await DB.settings.get('agentNotes')) || []).filter(n => n.id !== b.dataset.id))));
+    document.querySelectorAll('.mn-fam').forEach(b => b.addEventListener('click', async () =>
+      saveNotes(((await DB.settings.get('agentNotes')) || []).map(n => n.id === b.dataset.id ? { ...n, tripId: null } : n))));
+    document.querySelectorAll('.mn-sum').forEach(b => b.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+      try {
+        const out = await summarizeTrip(b.dataset.id);
+        UI.toast(out ? 'הסיכום עודכן ✓' : 'אין עדיין שיחות לסכם לטיול הזה', out ? 'success' : 'info');
+        memoryScreen();
+      } catch (err) { UI.toast(err.message, 'error'); }
+    })));
+  }
+
   function init() {
     render();
     const form = document.getElementById('agent-form');
     form.addEventListener('submit', (e) => { e.preventDefault(); send(document.getElementById('agent-input').value); });
+    const log = document.getElementById('agent-log');
+    log.addEventListener('scroll', updateJump);
+    document.getElementById('agent-jump').addEventListener('click', () => log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' }));
+    document.getElementById('agent-quote-x').addEventListener('click', clearQuote);
+    document.getElementById('agent-memory-btn').addEventListener('click', memoryScreen);
+    const searchBar = document.getElementById('agent-search-bar');
+    const searchInput = document.getElementById('agent-search-input');
+    document.getElementById('agent-search-btn').addEventListener('click', () => {
+      searchBar.classList.toggle('hidden');
+      if (searchBar.classList.contains('hidden')) { searchInput.value = ''; render(); }
+      else searchInput.focus();
+    });
+    let debounce = null;
+    searchInput.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(render, 250); });
   }
 
   return { init, render, send, summarizeTrip, summaries, DEFAULT_PERSONA, CHIPS };

@@ -104,3 +104,5 @@ node tests/smoke.mjs          # בדיקת עשן ללקוח הגשר
 
 בכל commit שמשנה קוד יש לעדכן יחד: `sw.js` (CACHE_VERSION), `version.json`, `index.html` (`_BUNDLE_VERSION`).
 שינוי ב-`bridge/bridge.gs` מחייב פריסה מחדש של הגשר (Deploy → Manage deployments → Edit → New version).
+
+גשר v1.3.0 הוסיף את `fileGet`/`filePut` — נדרש לגיבוי ארכיון שיחות הסוכן בדרייב. עם גשר ישן יותר האפליקציה ממשיכה לעבוד והארכיון נשמר במכשיר בלבד.
