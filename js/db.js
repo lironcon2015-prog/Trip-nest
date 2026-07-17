@@ -133,8 +133,16 @@ const DB = (() => {
     const rs = remote.shared || {};
     const localSharedAt = (await settings.get('sharedUpdatedAt')) || 0;
     if ((rs.updatedAt || 0) > localSharedAt) {
-      for (const k of SHARED_SETTINGS) if (rs[k] != null) await settings.set(k, rs[k]);
-      await settings.set('sharedUpdatedAt', rs.updatedAt);
+      // a remote null never erases a local value — a device that synced before it
+      // had the shared settings must not clobber them. Keep ours and re-upload with
+      // a fresh stamp so every other device pulls the healed copy.
+      let heal = false;
+      for (const k of SHARED_SETTINGS) {
+        if (rs[k] != null) await settings.set(k, rs[k]);
+        else if ((await settings.get(k)) != null) heal = true;
+      }
+      if (heal) { await touchShared(); needUpload = true; }
+      else await settings.set('sharedUpdatedAt', rs.updatedAt);
       localChanged = true;
     } else if (localSharedAt > (rs.updatedAt || 0)) {
       needUpload = true;
@@ -179,9 +187,13 @@ const DB = (() => {
         await putRaw(st, rec);
       }
     }
-    for (const [k, v] of Object.entries(data.settingsShared || {})) if (v != null) await settings.set(k, v);
+    const shared = Object.entries(data.settingsShared || {}).filter(([, v]) => v != null);
+    for (const [k, v] of shared) await settings.set(k, v);
     for (const [k, v] of Object.entries(data.settingsLocal || {})) if (v != null) await settings.set(k, v);
-    await touchShared();
+    // a connections-only profile carries no shared settings — leave the local stamp
+    // at zero so the first sync pulls them all from Drive instead of skipping them
+    if (shared.length) await touchShared();
+    else await settings.del('sharedUpdatedAt');
   }
 
   return {
