@@ -135,7 +135,15 @@ const DB = (() => {
     }
     const rs = remote.shared || {};
     const localSharedAt = (await settings.get('sharedUpdatedAt')) || 0;
-    if ((rs.updatedAt || 0) > localSharedAt) {
+    if ((rs.updatedAt || 0) === localSharedAt) {
+      // equal stamps normally mean identical values, but a past bug could leave the
+      // remote copy hollow — if we hold a value the remote lacks, push a healed copy
+      for (const k of SHARED_SETTINGS) {
+        if (rs[k] == null && (await settings.get(k)) != null) {
+          await touchShared(); needUpload = true; break;
+        }
+      }
+    } else if ((rs.updatedAt || 0) > localSharedAt) {
       // a remote null never erases a local value — a device that synced before it
       // had the shared settings must not clobber them. Keep ours and re-upload with
       // a fresh stamp so every other device pulls the healed copy.
