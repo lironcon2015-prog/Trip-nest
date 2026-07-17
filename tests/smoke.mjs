@@ -394,15 +394,24 @@ await test('Gemini: מפתח בכותרת, לא ב-URL', async () => {
   assert(!c.url.includes('test-gemini-key'), 'key must not appear in URL');
 });
 
+const [M1, M2, M3] = Gemini.DEFAULT_MODELS;
+
 await test('Gemini: עומס במודל הראשון → fallback לשני', async () => {
-  gemini.behavior = { 'gemini-2.5-flash': { status: 429 } }; gemini.calls = [];
+  gemini.behavior = { [M1]: { status: 429 } }; gemini.calls = [];
   const data = await Gemini.call({ contents: [] });
-  assert(Gemini.textOf(data) === 'ok:gemini-2.5-flash-lite', 'expected second model reply');
+  assert(Gemini.textOf(data) === 'ok:' + M2, 'expected second model reply');
+  assert(gemini.calls.length === 2, 'expected exactly 2 calls');
+});
+
+await test('Gemini: מודל שהוצא משירות (404) → דילוג למודל הבא', async () => {
+  gemini.behavior = { [M1]: { status: 404, message: 'model not found', apiStatus: 'NOT_FOUND' } }; gemini.calls = [];
+  const data = await Gemini.call({ contents: [] });
+  assert(Gemini.textOf(data) === 'ok:' + M2, 'expected fallback past retired model');
   assert(gemini.calls.length === 2, 'expected exactly 2 calls');
 });
 
 await test('Gemini: שגיאת תצורה (400) → זריקה מיידית בלי fallback', async () => {
-  gemini.behavior = { 'gemini-2.5-flash': { status: 400, message: 'API key not valid' } }; gemini.calls = [];
+  gemini.behavior = { [M1]: { status: 400, message: 'API key not valid' } }; gemini.calls = [];
   let err = null;
   try { await Gemini.call({ contents: [] }); } catch (e) { err = e; }
   assert(err && err.message === 'API key not valid', 'expected immediate throw');
@@ -411,8 +420,9 @@ await test('Gemini: שגיאת תצורה (400) → זריקה מיידית בל
 
 await test('Gemini: כל המודלים עמוסים (כולל גוף לא-JSON) → הודעת עומס', async () => {
   gemini.behavior = {
-    'gemini-2.5-flash': { status: 503, nonJson: true },
-    'gemini-2.5-flash-lite': { status: 429 },
+    [M1]: { status: 503, nonJson: true },
+    [M2]: { status: 429 },
+    [M3]: { status: 429 },
   };
   let err = null;
   try { await Gemini.call({ contents: [] }); } catch (e) { err = e; }

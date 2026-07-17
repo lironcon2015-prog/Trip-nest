@@ -1,11 +1,12 @@
 /* TripNest — Gemini API client (key is stored locally in settings, never synced).
    Transport = model cascade: try each model in order, falling back to the next
-   only on overload/unavailability (429/503/RESOURCE_EXHAUSTED/UNAVAILABLE);
-   any other error (bad key, bad model name, safety block) throws immediately —
-   a config error will fail on the next model too, so falling back only hides it. */
+   on overload/unavailability (429/503/RESOURCE_EXHAUSTED/UNAVAILABLE) and on a
+   retired/unknown model name (404/NOT_FOUND — per-model, the next may exist);
+   any other error (bad key, safety block) throws immediately — a config error
+   will fail on the next model too, so falling back only hides it. */
 const Gemini = (() => {
   const API = 'https://generativelanguage.googleapis.com/v1beta/models';
-  const DEFAULT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+  const DEFAULT_MODELS = ['gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
 
   async function key() {
     const k = await DB.settings.get('geminiKey');
@@ -42,8 +43,8 @@ const Gemini = (() => {
       if (res.ok && data) return data;
       const msg = data?.error?.message || `שגיאת API (HTTP ${res.status})`;
       const status = data?.error?.status || '';
-      const shouldFallback = res.status === 429 || res.status === 503
-        || status === 'RESOURCE_EXHAUSTED' || status === 'UNAVAILABLE';
+      const shouldFallback = res.status === 429 || res.status === 503 || res.status === 404
+        || status === 'RESOURCE_EXHAUSTED' || status === 'UNAVAILABLE' || status === 'NOT_FOUND';
       if (!shouldFallback) throw new Error(msg);
     }
     throw new Error('כל המודלים עמוסים כרגע – נסו שוב בעוד דקה');
@@ -88,7 +89,9 @@ const Gemini = (() => {
 
   // one full chat turn; history = [{role:'user'|'model', parts:[...]}]
   function chat(history, { system, tools } = {}) {
-    const payload = { contents: history, generationConfig: { temperature: 0.6 } };
+    // low-ish temperature: itineraries and place names are factual work —
+    // the fun lives in the persona, not in sampling noise
+    const payload = { contents: history, generationConfig: { temperature: 0.35 } };
     if (system) payload.systemInstruction = { parts: [{ text: system }] };
     if (tools?.length) payload.tools = [{ functionDeclarations: tools }];
     return call(payload);
