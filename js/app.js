@@ -236,7 +236,7 @@ const App = (() => {
       el.innerHTML = `
         <div class="max-w-lg mx-auto mt-3 bg-indigo-600 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
           <span class="text-xl">🚀</span>
-          <span class="text-sm font-medium flex-1">גרסה חדשה של צ׳קין מוכנה</span>
+          <span class="text-sm font-medium flex-1">גרסה חדשה של Navigo מוכנה</span>
           <button id="update-now" class="bg-white text-indigo-600 text-xs font-bold px-3.5 py-2 rounded-xl active:scale-95">עדכון</button>
           <button id="update-later" class="text-white/70 text-xs px-1">אחר-כך</button>
         </div>`;

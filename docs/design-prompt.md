@@ -2,7 +2,7 @@
 
 > הפרומפט המקורי שנוצר עם Gemini/Stitch. כל שינוי עיצובי באפליקציה חייב להישאר נאמן לשפה הזו.
 
-Act as an elite UI/UX Designer and Expert Senior Frontend Developer. We are building the frontend shell for "TripNest" (צ׳קין) - a premium family travel management PWA.
+Act as an elite UI/UX Designer and Expert Senior Frontend Developer. We are building the frontend shell for "TripNest" (Navigo) - a premium family travel management PWA.
 
 ## 1. Design System & Vibe (CRITICAL)
 - **Aesthetic:** Apple iOS / Airbnb / Modern Native App. It must look highly polished, minimalist, and expensive. NO bootstrap-like heavy colors.
@@ -14,7 +14,7 @@ Act as an elite UI/UX Designer and Expert Senior Frontend Developer. We are buil
 - **Glassmorphism:** Use `bg-white/70 backdrop-blur-lg` for sticky headers and the bottom nav.
 
 ## 2. View 1 — Home Screen
-- **Header:** Sticky top, glassmorphism. App name "צ׳קין 🛫" in bold, subtitle "TripNest". Notification bell icon (soft gray container).
+- **Header:** Sticky top, glassmorphism. App name "Navigo 🛫" in bold (no subtitle). Notification bell icon (soft gray container).
 - **Family Strip:** Horizontal scroll (hidden scrollbar). User avatars — clean circular images with a very subtle `ring-1 ring-slate-200`. Names below in small gray text. A "+" dashed circle button.
 - **Hero Card (Upcoming Trip):** Massive card (`min-h-[280px] rounded-[2rem] overflow-hidden relative shadow-lg`). Background: full cover destination image. Gradient ONLY at the bottom (`bg-gradient-to-t from-black/90 via-black/40 to-transparent`). White title + dates. Glass pill top corner: "בעוד X ימים" (`bg-white/20 backdrop-blur-md text-white`). Entire card clickable.
 - **Quick Actions:** Clean grid of 4 cards, icons on `bg-indigo-50 text-indigo-600 rounded-full p-3`: "סרוק מסמך", "כספת דרכונים", "רשימת אריזה", "תקציב".

@@ -74,7 +74,7 @@ function ping() {
 
 /* מכשיר ראשון: יצירת התיקייה המשותפת ושיתופה לבן/בת הזוג */
 function createFolder(req) {
-  const name = req.name || 'TripNest — צ׳קין';
+  const name = req.name || 'TripNest — Navigo';
   const folder = DriveApp.createFolder(name);
   folder.setDescription(ROOT_MARKER);
   if (req.partnerEmail) folder.addEditor(req.partnerEmail);
