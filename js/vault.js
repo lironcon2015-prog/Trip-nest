@@ -86,6 +86,25 @@ const Vault = (() => {
     return 'bg-black/60 text-white';
   }
 
+  // on-device OCR takes seconds per passport (and the first run also loads the OCR
+  // engine) — a blocking progress modal keeps the upload from looking like a no-op
+  function readingModal(total) {
+    UI.openModal({
+      title: '🛂 קריאת דרכונים',
+      hideConfirm: true,
+      bodyHTML: `
+        <div class="flex flex-col items-center gap-4 py-6 text-center">
+          <span class="inline-block w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></span>
+          <div id="mrz-progress" class="text-sm font-medium text-slate-700">${total === 1 ? 'קורא את הדרכון במכשיר…' : `קורא דרכון 1 מתוך ${total}…`}</div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">הזיהוי רץ מקומית במכשיר (OCR), בלי לשלוח את הצילום לשום מקום — זה עשוי לקחת כמה שניות לכל דרכון.</p>
+        </div>`,
+    });
+    return (i) => {
+      const el = document.getElementById('mrz-progress');
+      if (el) el.textContent = `קורא דרכון ${i} מתוך ${total}…`;
+    };
+  }
+
   /* passport → family member: local MRZ read. Single file opens the review modal;
      multiple files are auto-allocated to existing members (passport number / name /
      birth date); anything unmatched falls back to the review modal per file. */
@@ -97,16 +116,17 @@ const Vault = (() => {
       if (!files.length) return;
       if (files.length === 1) {
         const f = files[0];
-        UI.toast('קורא את הדרכון במכשיר… 🔍', 'info');
+        readingModal(1);
         let p = null;
         try { p = await MRZ.fromImage(f, { thorough: true }); } catch { }
         if (!p) UI.toast('לא הצלחתי לקרוא את שורות ה-MRZ — מלאו את הפרטים ידנית', 'warning');
         Members.proposeFromPassport({ blob: f, mimeType: f.type }, p || {}, { onDone: () => open() });
         return;
       }
-      UI.toast(`קורא ${files.length} דרכונים במכשיר… 🔍`, 'info');
+      const tick = readingModal(files.length);
       const done = [], review = [], failed = [];
-      for (const f of files) {
+      for (const [i, f] of files.entries()) {
+        tick(i + 1);
         const r = await allocatePassport(f);
         (r.ok ? done : r.p ? review : failed).push(r);
       }
