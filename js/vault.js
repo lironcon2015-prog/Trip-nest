@@ -106,8 +106,9 @@ const Vault = (() => {
   }
 
   /* passport → family member: local MRZ read. Single file opens the review modal;
-     multiple files are auto-allocated to existing members (passport number / name /
-     birth date); anything unmatched falls back to the review modal per file. */
+     multiple files open one assignment screen — every passport gets a thumbnail and
+     a member selector (best match preselected), and nothing is saved before the
+     user confirms, so existing members are never recreated behind their back. */
   function newFromPassport() {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
@@ -124,61 +125,74 @@ const Vault = (() => {
         return;
       }
       const tick = readingModal(files.length);
-      const done = [], review = [], failed = [];
+      const members = Members.sorted(await DB.all('members'));
+      const shots = await DB.allRaw('vault');
+      const rows = [];
       for (const [i, f] of files.entries()) {
         tick(i + 1);
-        const r = await allocatePassport(f);
-        (r.ok ? done : r.p ? review : failed).push(r);
+        let p = null;
+        try { p = await MRZ.fromImage(f, { thorough: true }); } catch { }
+        rows.push({ f, p, match: p ? Members.matchPassport(members, shots, p) : null });
       }
-      if (done.length) { G.Sync.queue(); document.dispatchEvent(new CustomEvent('tn-data-changed')); }
-      // unmatched-but-readable passports go through the review modal one by one,
-      // so the user assigns them to an existing member (or approves a new one)
-      const reviewNext = () => {
-        const r = review.shift();
-        if (!r) { open(); return; }
-        let advanced = false;
-        const next = () => {
-          if (advanced) return;
-          advanced = true;
-          document.getElementById('modal-close')?.removeEventListener('click', next);
-          reviewNext();
-        };
-        Members.proposeFromPassport({ blob: r.file, mimeType: r.file.type }, r.p, { onDone: next });
-        document.getElementById('modal-close')?.addEventListener('click', next);
-      };
-      UI.openModal({
-        title: 'שיוך דרכונים',
-        hideConfirm: true,
-        bodyHTML: `
-          <div class="space-y-2">
-            ${done.map(r => `<div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-sm rounded-xl p-3">✓ <b>${UI.esc(r.member.nameHe)}</b> — שויך לבן משפחה קיים</div>`).join('')}
-            ${review.map(r => `<div class="flex items-center gap-2 bg-indigo-50 text-indigo-700 text-sm rounded-xl p-3">? <b>${UI.esc(r.p.nameEn || r.file.name)}</b> — לא נמצא בן משפחה תואם, נעבור לשיוך ידני</div>`).join('')}
-            ${failed.map(r => `<div class="flex items-center gap-2 bg-amber-50 text-amber-700 text-sm rounded-xl p-3">! ${UI.esc(r.file.name)} — לא זוהו שורות MRZ, העלו אותו לבד לשיוך ידני</div>`).join('')}
-          </div>`,
-      });
-      document.getElementById('modal-close')?.addEventListener('click', () => reviewNext(), { once: true });
+      assignModal(rows, members);
     });
     input.click();
   }
 
-  // one passport photo → the right member via Members.matchPassport (passport number →
-  // name → birth date). No confident match → hand back for manual review, never
-  // auto-create a member that may already exist. Photo goes to this device's vault.
-  async function allocatePassport(f) {
-    let p = null;
-    try { p = await MRZ.fromImage(f, { thorough: true }); } catch { }
-    if (!p || !(p.nameEn || p.passportNumber)) return { ok: false, file: f };
-    const member = Members.matchPassport(await DB.all('members'), await DB.allRaw('vault'), p);
-    if (!member) return { ok: false, p, file: f };
-    if (!member.birthDate && p.birthDate) {
-      member.birthDate = p.birthDate;
-      await DB.put('members', member);
-    }
-    await DB.putRaw('vault', {
-      id: DB.uid(), memberId: member.id, blob: f, mimeType: f.type,
-      expiryDate: p.expiryDate || null, passportNumber: p.passportNumber || null, createdAt: Date.now(),
+  // one screen for the whole batch: thumbnail + what the MRZ said + member selector.
+  // Even an unreadable photo can be assigned by eye thanks to the thumbnail.
+  function assignModal(rows, members) {
+    UI.openModal({
+      title: 'שיוך דרכונים לבני משפחה',
+      confirmLabel: 'שמירה בכספת',
+      bodyHTML: `
+        <p class="text-xs text-slate-500 mb-3">בדקו את השיוך של כל דרכון ותקנו אם צריך — שום דבר לא נשמר לפני האישור. הצילומים נשמרים <b>בכספת במכשיר הזה בלבד</b>.</p>
+        <div class="space-y-2">
+          ${rows.map((r, i) => `
+            <div class="flex items-center gap-3 bg-slate-50 rounded-2xl p-2 pl-3">
+              <img id="pa-img-${i}" class="w-16 h-11 object-cover rounded-lg ring-1 ring-slate-200 shrink-0">
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-medium ${r.p ? 'text-slate-700' : 'text-amber-600'} truncate" dir="ltr">${r.p ? UI.esc(r.p.nameEn) : `${UI.esc(r.f.name)} — לא זוהו שורות MRZ`}</div>
+                <select id="pa-sel-${i}" class="tn-input mt-1 !py-1.5 text-sm">
+                  ${members.map(m => `<option value="${m.id}" ${r.match && r.match.id === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}${m.nameEn ? ` — ${UI.esc(m.nameEn)}` : ''}</option>`).join('')}
+                  ${r.p ? `<option value="__new" ${r.match ? '' : 'selected'}>➕ בן משפחה חדש (${UI.esc(r.p.nameEn)})</option>` : ''}
+                  <option value="__skip" ${!r.p && !r.match ? 'selected' : ''}>דילוג — בלי לשמור</option>
+                </select>
+              </div>
+            </div>`).join('')}
+        </div>`,
+      onConfirm: async () => {
+        let saved = 0, created = 0;
+        for (const [i, r] of rows.entries()) {
+          const sel = document.getElementById(`pa-sel-${i}`).value;
+          if (sel === '__skip') continue;
+          let member;
+          if (sel === '__new') {
+            member = await DB.put('members', { nameHe: r.p.nameHe || r.p.nameEn, nameEn: r.p.nameEn || '', birthDate: r.p.birthDate || null });
+            created++;
+          } else {
+            member = await DB.get('members', sel);
+            if (!member) continue;
+            if (!member.birthDate && r.p?.birthDate) member.birthDate = r.p.birthDate;
+            if (!member.nameEn && r.p?.nameEn) member.nameEn = r.p.nameEn;
+            await DB.put('members', member);
+          }
+          await DB.putRaw('vault', {
+            id: DB.uid(), memberId: member.id, blob: r.f, mimeType: r.f.type,
+            expiryDate: r.p?.expiryDate || null, passportNumber: r.p?.passportNumber || null, createdAt: Date.now(),
+          });
+          saved++;
+        }
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+        UI.toast(`${saved} דרכונים נשמרו בכספת 🔒${created ? ` (+${created} בני משפחה חדשים)` : ''}`, 'success');
+        open();
+      },
     });
-    return { ok: true, member, file: f };
+    rows.forEach((r, i) => {
+      const img = document.getElementById(`pa-img-${i}`);
+      if (img) img.src = URL.createObjectURL(r.f);
+    });
   }
 
   function capture(memberId) {

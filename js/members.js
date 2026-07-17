@@ -17,35 +17,35 @@ const Members = (() => {
   /* --- passport ↔ existing member matching (shared by single & multi upload) --- */
   const nameTokens = (s) => (s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
-  // tolerant English-name compare: the shorter name's tokens all appear in the longer one
-  // (so member "Liron" matches MRZ "LIRON COHEN", and word order doesn't matter)
-  function nameMatches(a, b) {
-    const ta = nameTokens(a), tb = nameTokens(b);
-    if (!ta.length || !tb.length) return false;
-    const [small, big] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
-    return small.every(t => big.includes(t));
-  }
-
-  // p = MRZ fields → the existing member this passport belongs to, or null when unsure.
-  // Order: passport number already in the vault → English name (birth date must not
-  // contradict) → unique birth date. Ambiguous candidates return null — never guess.
+  // p = MRZ fields → the best existing member for this passport, or null.
+  // A passport number already in the vault wins outright. Otherwise the English
+  // name is the primary signal: score by shared words, so member "Liron" or
+  // "Liron Cohen" matches MRZ "LIRON MOSHE COHEN", word order ignored; covering
+  // the member's whole recorded name breaks family-surname ties ("Dana Cohen"
+  // loses "LIRON COHEN" to "Liron Cohen"). A contradicting birth date disqualifies;
+  // a matching one is a weak signal on its own. Exact ties return null — never guess.
   function matchPassport(members, shots, p) {
     if (p.passportNumber) {
       const shot = shots.find(v => v.passportNumber === p.passportNumber);
       const m = shot && members.find(x => x.id === shot.memberId);
       if (m) return m;
     }
-    if (p.nameEn) {
-      const byName = members.filter(m => nameMatches(m.nameEn, p.nameEn) &&
-        (!m.birthDate || !p.birthDate || m.birthDate === p.birthDate));
-      if (byName.length === 1) return byName[0];
+    const theirs = nameTokens(p.nameEn);
+    let best = null, bestScore = 0, tied = false;
+    for (const m of members) {
+      const birthKnown = m.birthDate && p.birthDate;
+      if (birthKnown && m.birthDate !== p.birthDate) continue;
+      const mine = nameTokens(m.nameEn);
+      const shared = mine.filter(t => theirs.includes(t)).length;
+      // a single shared word out of several is usually just the family surname —
+      // weaker evidence than a matching birth date
+      let score = shared ? (shared === mine.length ? shared + 0.5 : shared > 1 ? shared : 0.2) : 0;
+      if (birthKnown) score += 0.25;
+      if (!score) continue;
+      if (score > bestScore) { best = m; bestScore = score; tied = false; }
+      else if (score === bestScore) tied = true;
     }
-    if (p.birthDate) {
-      const byBirth = members.filter(m => m.birthDate === p.birthDate &&
-        !(m.nameEn && p.nameEn && !nameMatches(m.nameEn, p.nameEn)));
-      if (byBirth.length === 1) return byBirth[0];
-    }
-    return null;
+    return tied ? null : best;
   }
 
   async function strip(containerId) {
