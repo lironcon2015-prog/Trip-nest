@@ -14,6 +14,40 @@ const Members = (() => {
     });
   }
 
+  /* --- passport ↔ existing member matching (shared by single & multi upload) --- */
+  const nameTokens = (s) => (s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+
+  // tolerant English-name compare: the shorter name's tokens all appear in the longer one
+  // (so member "Liron" matches MRZ "LIRON COHEN", and word order doesn't matter)
+  function nameMatches(a, b) {
+    const ta = nameTokens(a), tb = nameTokens(b);
+    if (!ta.length || !tb.length) return false;
+    const [small, big] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+    return small.every(t => big.includes(t));
+  }
+
+  // p = MRZ fields → the existing member this passport belongs to, or null when unsure.
+  // Order: passport number already in the vault → English name (birth date must not
+  // contradict) → unique birth date. Ambiguous candidates return null — never guess.
+  function matchPassport(members, shots, p) {
+    if (p.passportNumber) {
+      const shot = shots.find(v => v.passportNumber === p.passportNumber);
+      const m = shot && members.find(x => x.id === shot.memberId);
+      if (m) return m;
+    }
+    if (p.nameEn) {
+      const byName = members.filter(m => nameMatches(m.nameEn, p.nameEn) &&
+        (!m.birthDate || !p.birthDate || m.birthDate === p.birthDate));
+      if (byName.length === 1) return byName[0];
+    }
+    if (p.birthDate) {
+      const byBirth = members.filter(m => m.birthDate === p.birthDate &&
+        !(m.nameEn && p.nameEn && !nameMatches(m.nameEn, p.nameEn)));
+      if (byBirth.length === 1) return byBirth[0];
+    }
+    return null;
+  }
+
   async function strip(containerId) {
     const el = document.getElementById(containerId);
     const members = sorted(await DB.all('members'));
@@ -213,14 +247,21 @@ const Members = (() => {
 
   /* --- passport upload → auto family member (photo goes to the local vault)
      source = { blob, mimeType, docId? } — docId is removed from documents on confirm --- */
-  function proposeFromPassport(source, p, { onDone } = {}) {
+  async function proposeFromPassport(source, p, { onDone } = {}) {
+    const members = sorted(await DB.all('members'));
+    const match = matchPassport(members, await DB.allRaw('vault'), p);
     UI.openModal({
       title: '🛂 זוהה דרכון!',
-      confirmLabel: 'יצירת בן משפחה',
+      confirmLabel: 'שמירה בכספת',
       bodyHTML: `
         <div class="space-y-3">
           <p class="text-xs text-slate-500">הפרטים חולצו <b>מקומית במכשיר</b> (קריאת MRZ, בלי AI חיצוני) — בדקו והשלימו:</p>
-          <div><label class="tn-label">שם בעברית *</label><input id="pp-name-he" class="tn-input" value="${UI.esc(p.nameHe || '')}"></div>
+          ${members.length ? `<div><label class="tn-label">שיוך לבן משפחה</label>
+            <select id="pp-member" class="tn-input">
+              <option value="">➕ בן משפחה חדש</option>
+              ${members.map(m => `<option value="${m.id}" ${match && match.id === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}${m.nameEn ? ` — ${UI.esc(m.nameEn)}` : ''}</option>`).join('')}
+            </select></div>` : ''}
+          <div><label class="tn-label">שם בעברית${match ? '' : ' *'}</label><input id="pp-name-he" class="tn-input" value="${UI.esc(p.nameHe || '')}"></div>
           <div><label class="tn-label">שם באנגלית (כמו בדרכון)</label><input id="pp-name-en" class="tn-input" dir="ltr" value="${UI.esc(p.nameEn || '')}"></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="tn-label">תאריך לידה</label><input id="pp-birth" type="date" class="tn-input" value="${p.birthDate || ''}"></div>
@@ -232,22 +273,23 @@ const Members = (() => {
       onConfirm: async () => {
         const nameHe = document.getElementById('pp-name-he').value.trim();
         const nameEn = document.getElementById('pp-name-en').value.trim();
-        if (!nameHe && !nameEn) throw new Error('חסר שם');
-        // אם בן המשפחה כבר קיים (לפי שם) — מצרפים אליו את הדרכון במקום ליצור כפול
-        const members = await DB.all('members');
-        let member = members.find(m =>
-          (nameEn && (m.nameEn || '').toLowerCase() === nameEn.toLowerCase()) ||
-          (nameHe && m.nameHe === nameHe));
+        const birthDate = document.getElementById('pp-birth').value || null;
+        // explicit selection wins; otherwise dedupe by name — never recreate an existing member
+        const selId = document.getElementById('pp-member')?.value || '';
+        let member = selId ? await DB.get('members', selId) : null;
+        if (!member) {
+          member = members.find(m =>
+            (nameEn && (m.nameEn || '').toLowerCase() === nameEn.toLowerCase()) ||
+            (nameHe && m.nameHe === nameHe)) || null;
+        }
+        if (!member && !nameHe && !nameEn) throw new Error('חסר שם');
         const existed = !!member;
         if (member) {
-          if (!member.birthDate && document.getElementById('pp-birth').value) member.birthDate = document.getElementById('pp-birth').value;
+          if (!member.birthDate && birthDate) member.birthDate = birthDate;
           if (!member.nameEn && nameEn) member.nameEn = nameEn;
           await DB.put('members', member);
         } else {
-          member = await DB.put('members', {
-            nameHe: nameHe || nameEn, nameEn,
-            birthDate: document.getElementById('pp-birth').value || null,
-          });
+          member = await DB.put('members', { nameHe: nameHe || nameEn, nameEn, birthDate });
         }
         if (source.blob) {
           await DB.putRaw('vault', {
@@ -266,6 +308,6 @@ const Members = (() => {
     });
   }
 
-  return { strip, openProfile, editModal, reorderModal, pickerHTML, wirePicker, pickedIds, sorted, proposeFromPassport };
+  return { strip, openProfile, editModal, reorderModal, pickerHTML, wirePicker, pickedIds, sorted, matchPassport, proposeFromPassport };
 })();
 window.Members = Members;

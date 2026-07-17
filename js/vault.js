@@ -87,7 +87,8 @@ const Vault = (() => {
   }
 
   /* passport → family member: local MRZ read. Single file opens the review modal;
-     multiple files are auto-allocated to members by passport number / name. */
+     multiple files are auto-allocated to existing members (passport number / name /
+     birth date); anything unmatched falls back to the review modal per file. */
   function newFromPassport() {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
@@ -104,47 +105,52 @@ const Vault = (() => {
         return;
       }
       UI.toast(`קורא ${files.length} דרכונים במכשיר… 🔍`, 'info');
-      const done = [], failed = [];
+      const done = [], review = [], failed = [];
       for (const f of files) {
         const r = await allocatePassport(f);
-        (r.ok ? done : failed).push(r);
+        (r.ok ? done : r.p ? review : failed).push(r);
       }
       if (done.length) { G.Sync.queue(); document.dispatchEvent(new CustomEvent('tn-data-changed')); }
+      // unmatched-but-readable passports go through the review modal one by one,
+      // so the user assigns them to an existing member (or approves a new one)
+      const reviewNext = () => {
+        const r = review.shift();
+        if (!r) { open(); return; }
+        let advanced = false;
+        const next = () => {
+          if (advanced) return;
+          advanced = true;
+          document.getElementById('modal-close')?.removeEventListener('click', next);
+          reviewNext();
+        };
+        Members.proposeFromPassport({ blob: r.file, mimeType: r.file.type }, r.p, { onDone: next });
+        document.getElementById('modal-close')?.addEventListener('click', next);
+      };
       UI.openModal({
         title: 'שיוך דרכונים',
         hideConfirm: true,
         bodyHTML: `
           <div class="space-y-2">
-            ${done.map(r => `<div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-sm rounded-xl p-3">✓ <b>${UI.esc(r.member.nameHe)}</b> — ${r.created ? 'בן משפחה חדש נוצר' : 'שויך לבן משפחה קיים'}</div>`).join('')}
+            ${done.map(r => `<div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-sm rounded-xl p-3">✓ <b>${UI.esc(r.member.nameHe)}</b> — שויך לבן משפחה קיים</div>`).join('')}
+            ${review.map(r => `<div class="flex items-center gap-2 bg-indigo-50 text-indigo-700 text-sm rounded-xl p-3">? <b>${UI.esc(r.p.nameEn || r.file.name)}</b> — לא נמצא בן משפחה תואם, נעבור לשיוך ידני</div>`).join('')}
             ${failed.map(r => `<div class="flex items-center gap-2 bg-amber-50 text-amber-700 text-sm rounded-xl p-3">! ${UI.esc(r.file.name)} — לא זוהו שורות MRZ, העלו אותו לבד לשיוך ידני</div>`).join('')}
           </div>`,
       });
-      const btn = document.getElementById('modal-close');
-      btn?.addEventListener('click', () => open(), { once: true });
+      document.getElementById('modal-close')?.addEventListener('click', () => reviewNext(), { once: true });
     });
     input.click();
   }
 
-  // one passport photo → the right member: match by passport number, then by name;
-  // otherwise create the member from the MRZ data. Photo goes to this device's vault.
+  // one passport photo → the right member via Members.matchPassport (passport number →
+  // name → birth date). No confident match → hand back for manual review, never
+  // auto-create a member that may already exist. Photo goes to this device's vault.
   async function allocatePassport(f) {
     let p = null;
     try { p = await MRZ.fromImage(f, { thorough: true }); } catch { }
     if (!p || !(p.nameEn || p.passportNumber)) return { ok: false, file: f };
-    const members = await DB.all('members');
-    const shots = await DB.allRaw('vault');
-    let member = null;
-    if (p.passportNumber) {
-      const shot = shots.find(v => v.passportNumber === p.passportNumber);
-      if (shot) member = members.find(m => m.id === shot.memberId) || null;
-    }
-    if (!member && p.nameEn)
-      member = members.find(m => (m.nameEn || '').toLowerCase() === p.nameEn.toLowerCase()) || null;
-    let created = false;
-    if (!member) {
-      member = await DB.put('members', { nameHe: p.nameHe || p.nameEn, nameEn: p.nameEn || '', birthDate: p.birthDate || null });
-      created = true;
-    } else if (!member.birthDate && p.birthDate) {
+    const member = Members.matchPassport(await DB.all('members'), await DB.allRaw('vault'), p);
+    if (!member) return { ok: false, p, file: f };
+    if (!member.birthDate && p.birthDate) {
       member.birthDate = p.birthDate;
       await DB.put('members', member);
     }
@@ -152,7 +158,7 @@ const Vault = (() => {
       id: DB.uid(), memberId: member.id, blob: f, mimeType: f.type,
       expiryDate: p.expiryDate || null, passportNumber: p.passportNumber || null, createdAt: Date.now(),
     });
-    return { ok: true, member, created, file: f };
+    return { ok: true, member, file: f };
   }
 
   function capture(memberId) {
