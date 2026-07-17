@@ -104,8 +104,11 @@ const Gemini = (() => {
  "flights": [{"flightNo":"", "airline":"", "from":"", "to":"", "depDate":"", "depTime":"", "arrDate":"", "arrTime":""}],
  "checkIn": "", "checkOut": "", "address": "",
  "dates": [{"date":"", "time":"", "label":"תיאור קצר בעברית"}],
+ "amount": 0,
+ "currency": "₪|€|$|£",
  "notes": ""
 }
+amount = הסכום הכולל ששולם או לתשלום לפי המסמך (מספר בלבד); currency = מטבע הסכום. השמט אם אין מחיר במסמך.
 אם המסמך הוא דרכון: קבע category="passport" והוסף אובייקט passport:
 "passport": {"nameEn":"שם מלא באנגלית כמו בדרכון", "nameHe":"שם מלא בעברית אם מופיע", "birthDate":"", "passportNumber":"", "nationality":"", "expiryDate":"", "sex":"M|F"}`;
 

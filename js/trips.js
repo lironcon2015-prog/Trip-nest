@@ -11,6 +11,7 @@ const Trips = (() => {
     const el = document.getElementById('trips-list');
     const trips = await DB.all('trips');
     const members = await DB.all('members');
+    const allExpenses = await DB.all('expenses');
     const today = UI.todayISO();
     const upcoming = trips.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
     const past = trips.filter(t => t.endDate && t.endDate < today).sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
@@ -18,6 +19,9 @@ const Trips = (() => {
     const card = (t) => {
       const travelers = Members.sorted((t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
       const du = t.startDate ? UI.daysUntil(t.startDate) : null;
+      const tx = UI.expenseTotals(allExpenses.filter(x => x.tripId === t.id), t.fxRates);
+      const cost = [tx.ils > 0 ? UI.fmtMoney(tx.ils) : '',
+        Object.entries(tx.leftover).map(([c, v]) => UI.fmtMoney(v, c)).join(' + ')].filter(Boolean).join(' + ');
       const pill = du === null ? '' : du > 0 ? `בעוד ${du} ימים` : (t.endDate && t.endDate >= today ? 'עכשיו בטיול ✈️' : 'הסתיים');
       return `
       <button class="trip-card w-full text-right relative min-h-[150px] rounded-[1.75rem] overflow-hidden shadow-lg active:scale-[0.98] transition" data-trip="${t.id}">
@@ -29,7 +33,7 @@ const Trips = (() => {
         <div class="absolute bottom-0 right-0 left-0 p-4 flex items-end justify-between">
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
-            <div class="text-white/80 text-xs mt-0.5">${UI.esc(t.destination || '')}${t.destination && t.startDate ? ' · ' : ''}${UI.fmtDateRange(t.startDate, t.endDate)}</div>
+            <div class="text-white/80 text-xs mt-0.5">${UI.esc(t.destination || '')}${t.destination && t.startDate ? ' · ' : ''}${UI.fmtDateRange(t.startDate, t.endDate)}${cost ? `<span dir="ltr"> · ${cost}</span>` : ''}</div>
           </div>
           <div class="flex -space-x-2 space-x-reverse">${travelers.slice(0, 4).map(m => UI.avatarHTML(m, 'w-8 h-8', 'ring-2 ring-white/60')).join('')}</div>
         </div>
@@ -131,6 +135,7 @@ const Trips = (() => {
   async function renderTrip(tripId) {
     const trip = await DB.get('trips', tripId);
     if (!trip || trip.deleted) { App.navigate('trips'); return; }
+    if (_activeTripId !== tripId) _expFilter = '';
     _activeTripId = tripId;
     const members = await DB.all('members');
     const travelers = Members.sorted((trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
@@ -276,31 +281,131 @@ const Trips = (() => {
   }
 
   /* ---------- budget tab ---------- */
+  let _expFilter = '';
+
   async function renderBudget(trip, panel) {
     const expenses = await DB.byTrip('expenses', trip.id);
     const members = await DB.all('members');
-    const byCur = {};
-    expenses.forEach(x => byCur[x.currency || '₪'] = (byCur[x.currency || '₪'] || 0) + Number(x.amount || 0));
+    const budget = trip.budget || {};
+    const t = UI.expenseTotals(expenses, trip.fxRates);
+    const catIds = UI.EXPENSE_CATEGORIES.map(c => c.id).filter(id => t.byCat[id]);
+    const leftoverStr = Object.entries(t.leftover).map(([c, v]) => UI.fmtMoney(v, c)).join(' + ');
+    const totalTarget = Number(budget.total) || 0;
+
+    const progressBar = (spent, target, color = 'bg-indigo-500') => {
+      const over = spent > target;
+      return `
+        <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden" dir="ltr">
+          <div class="h-full rounded-full ${over ? 'bg-red-400' : color}" style="width:${Math.min(100, Math.round(spent / target * 100))}%"></div>
+        </div>
+        <div class="flex justify-between text-[10px] mt-0.5 ${over ? 'text-red-500 font-semibold' : 'text-slate-400'}">
+          <span>${over ? `חריגה של ${UI.fmtMoney(spent - target)}` : `נותרו ${UI.fmtMoney(target - spent)}`}</span>
+          <span dir="ltr">יעד ${UI.fmtMoney(target)}</span>
+        </div>`;
+    };
+
+    const stacked = t.ils > 0 && catIds.length > 1 ? `
+      <div class="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mt-3" dir="ltr">
+        ${catIds.map(id => `<div class="${UI.expCat(id).bar}" style="width:${(t.byCat[id] / t.ils * 100).toFixed(1)}%"></div>`).join('')}
+      </div>` : '';
+
+    const catRows = catIds.map(id => {
+      const c = UI.expCat(id);
+      const target = Number(budget.byCat?.[id]) || 0;
+      return `
+      <div class="py-1.5">
+        <div class="flex items-center gap-2.5">
+          <span class="w-7 h-7 rounded-lg ${c.tint} flex items-center justify-center shrink-0">${UI.icon(c.icon, 'w-3.5 h-3.5')}</span>
+          <span class="flex-1 text-sm text-slate-600">${c.he}</span>
+          <span class="text-[11px] text-slate-400">${Math.round(t.byCat[id] / t.ils * 100)}%</span>
+          <span class="text-sm font-semibold text-slate-700" dir="ltr">${UI.fmtMoney(t.byCat[id])}</span>
+        </div>
+        ${target ? `<div class="mt-1 mr-9">${progressBar(t.byCat[id], target, c.bar)}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    const shown = (_expFilter ? expenses.filter(x => (x.category || 'other') === _expFilter) : expenses)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const chips = catIds.length > 1 ? `
+      <div class="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-1 px-1">
+        ${[['', 'הכל'], ...catIds.map(id => [id, UI.expCat(id).he])].map(([id, he]) => `
+          <button class="exp-filter shrink-0 text-xs px-3 py-1.5 rounded-full ${_expFilter === id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 shadow-sm'}" data-cat="${id}">${he}</button>`).join('')}
+      </div>` : '';
 
     panel.innerHTML = `
-      <div class="bg-white rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-4 text-center">
-        <div class="text-xs text-slate-400 mb-1">סה״כ הוצאות בטיול</div>
-        <div class="text-2xl font-bold text-slate-800">${Object.keys(byCur).length ? Object.entries(byCur).map(([c, v]) => UI.fmtMoney(v, c)).join(' + ') : UI.fmtMoney(0)}</div>
+      <div class="bg-white rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-4">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-slate-400 mb-1">סה״כ הוצאות בטיול</div>
+            <div class="text-2xl font-bold text-slate-800" dir="ltr">${[t.ils > 0 || !t.hasLeftover ? UI.fmtMoney(t.ils) : '', leftoverStr].filter(Boolean).join(' + ')}</div>
+          </div>
+          <button id="bd-setup" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5 shrink-0">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
+        </div>
+        ${t.hasLeftover ? '<div class="text-[11px] text-amber-600 mt-1">יש הוצאות במטבע ללא שער המרה — הגדירו שער ב"יעדים ושערים" לסיכום מלא</div>' : ''}
+        ${totalTarget ? `<div class="mt-3">${progressBar(t.ils, totalTarget)}</div>` : ''}
+        ${stacked}
+        ${catRows ? `<div class="mt-2 divide-y divide-slate-50">${catRows}</div>` : ''}
       </div>
-      ${expenses.length ? `<div class="space-y-2.5">${expenses.sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(x => {
+      ${chips}
+      ${shown.length ? `<div class="space-y-2.5">${shown.map(x => {
         const payer = members.find(m => m.id === x.payerId);
+        const c = UI.expCat(x.category);
         return `
         <button class="exp-item w-full bg-white rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-3 text-right" data-id="${x.id}">
-          <span class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-lg shrink-0">💸</span>
+          <span class="w-10 h-10 rounded-xl ${c.tint} flex items-center justify-center shrink-0">${UI.icon(c.icon, 'w-5 h-5')}</span>
           <span class="flex-1 min-w-0">
             <span class="block text-sm font-semibold text-slate-800 truncate">${UI.esc(x.title)}</span>
-            <span class="block text-[11px] text-slate-400">${x.date ? UI.fmtDateShort(x.date) : ''}${payer ? ' · שילם/ה: ' + UI.esc(payer.nameHe) : ''}</span>
+            <span class="block text-[11px] text-slate-400">${[x.date ? UI.fmtDateShort(x.date) : '', payer ? 'שילם/ה: ' + UI.esc(payer.nameHe) : '', x.docId ? 'ממסמך' : ''].filter(Boolean).join(' · ')}</span>
           </span>
-          <span class="font-bold text-slate-700 text-sm shrink-0" dir="ltr">${UI.fmtMoney(x.amount, x.currency || '₪')}</span>
+          <span class="font-bold text-slate-700 text-sm shrink-0" dir="ltr">${UI.fmtMoney(x.amount, UI.normCur(x.currency))}</span>
         </button>`;
-      }).join('')}</div>` : UI.emptyState('wallet', 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
+      }).join('')}</div>` : UI.emptyState('wallet', _expFilter ? 'אין הוצאות בקטגוריה הזו' : 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
+
+    document.getElementById('bd-setup').addEventListener('click', () => budgetSetupModal(trip));
+    panel.querySelectorAll('.exp-filter').forEach(b => b.addEventListener('click', () => {
+      _expFilter = b.dataset.cat; renderBudget(trip, panel);
+    }));
     panel.querySelectorAll('.exp-item').forEach(b => b.addEventListener('click', async () =>
       expenseModal(trip, await DB.get('expenses', b.dataset.id))));
+  }
+
+  async function budgetSetupModal(trip) {
+    const b = trip.budget || {};
+    const rates = trip.fxRates || {};
+    UI.openModal({
+      title: 'יעדי תקציב ושערי המרה',
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <div class="space-y-4">
+          <div><label class="tn-label">יעד תקציב כולל (₪)</label>
+            <input id="bs-total" type="number" min="0" class="tn-input" dir="ltr" value="${b.total ?? ''}" placeholder="ללא יעד"></div>
+          <div><label class="tn-label">יעד לפי קטגוריה (₪, אופציונלי)</label>
+            <div class="grid grid-cols-2 gap-2">${UI.EXPENSE_CATEGORIES.map(c => `
+              <label class="flex items-center gap-2 bg-slate-50 rounded-xl px-2.5 py-2">
+                <span class="w-6 h-6 rounded-lg ${c.tint} flex items-center justify-center shrink-0">${UI.icon(c.icon, 'w-3 h-3')}</span>
+                <input type="number" min="0" class="bs-cat flex-1 min-w-0 bg-transparent text-sm outline-none" dir="ltr" data-cat="${c.id}" value="${b.byCat?.[c.id] ?? ''}" placeholder="${c.he}">
+              </label>`).join('')}</div></div>
+          <div><label class="tn-label">שערי המרה לש״ח (אופציונלי)</label>
+            <div class="grid grid-cols-3 gap-2">${UI.CURRENCIES.filter(c => c !== '₪').map(c => `
+              <label class="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2.5 py-2 text-sm text-slate-500" dir="ltr">
+                <span class="shrink-0">${c}1=</span>
+                <input type="number" step="0.01" min="0" class="bs-rate w-full min-w-0 bg-transparent outline-none" data-cur="${c}" value="${rates[c] ?? ''}" placeholder="₪">
+              </label>`).join('')}</div>
+            <p class="text-[11px] text-slate-400 mt-1.5">כשמוגדר שער, הוצאות במט״ח נכללות בסה״כ, בגרף וביעדים.</p></div>
+        </div>`,
+      onConfirm: async () => {
+        const byCat = {};
+        document.querySelectorAll('.bs-cat').forEach(i => { const v = parseFloat(i.value); if (v > 0) byCat[i.dataset.cat] = v; });
+        const fx = {};
+        document.querySelectorAll('.bs-rate').forEach(i => { const v = parseFloat(i.value); if (v > 0) fx[i.dataset.cur] = v; });
+        const total = parseFloat(document.getElementById('bs-total').value);
+        trip.budget = { ...(total > 0 ? { total } : {}), ...(Object.keys(byCat).length ? { byCat } : {}) };
+        trip.fxRates = fx;
+        await DB.put('trips', trip);
+        G.Sync.queue();
+        document.dispatchEvent(new CustomEvent('tn-data-changed'));
+      },
+    });
   }
 
   async function expenseModal(trip, x = null) {
@@ -311,9 +416,16 @@ const Trips = (() => {
       bodyHTML: `
         <div class="space-y-3">
           <div><label class="tn-label">תיאור *</label><input id="xf-title" class="tn-input" value="${UI.esc(x?.title || '')}"></div>
+          <div><label class="tn-label">קטגוריה</label>
+            <div class="grid grid-cols-4 gap-1.5">${UI.EXPENSE_CATEGORIES.map(c => `
+              <button type="button" class="xf-cat flex flex-col items-center gap-1 rounded-xl py-2 bg-slate-50 ${(x?.category || 'other') === c.id ? 'xf-on ring-2 ring-indigo-300' : ''}" data-cat="${c.id}">
+                <span class="w-7 h-7 rounded-lg ${c.tint} flex items-center justify-center">${UI.icon(c.icon, 'w-3.5 h-3.5')}</span>
+                <span class="text-[10px] text-slate-500">${c.he}</span>
+              </button>`).join('')}</div>
+          </div>
           <div class="grid grid-cols-3 gap-3">
             <div class="col-span-2"><label class="tn-label">סכום *</label><input id="xf-amount" type="number" step="0.01" min="0" class="tn-input" dir="ltr" value="${x?.amount ?? ''}"></div>
-            <div><label class="tn-label">מטבע</label><select id="xf-cur" class="tn-input">${['₪', '€', '$', '£'].map(c => `<option ${x?.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+            <div><label class="tn-label">מטבע</label><select id="xf-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(x?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="tn-label">תאריך</label><input id="xf-date" type="date" class="tn-input" value="${x?.date || UI.todayISO()}"></div>
@@ -328,6 +440,7 @@ const Trips = (() => {
         await DB.put('expenses', {
           ...(x || { tripId: trip.id }), title, amount,
           currency: document.getElementById('xf-cur').value,
+          category: document.querySelector('.xf-cat.xf-on')?.dataset.cat || 'other',
           date: document.getElementById('xf-date').value || null,
           payerId: document.getElementById('xf-payer').value || null,
         });
@@ -335,6 +448,10 @@ const Trips = (() => {
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
       },
     });
+    document.querySelectorAll('.xf-cat').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('.xf-cat').forEach(o => o.classList.remove('xf-on', 'ring-2', 'ring-indigo-300'));
+      b.classList.add('xf-on', 'ring-2', 'ring-indigo-300');
+    }));
     document.getElementById('xf-delete')?.addEventListener('click', () =>
       UI.confirm('למחוק את ההוצאה?', async () => {
         await DB.remove('expenses', x.id); G.Sync.queue();

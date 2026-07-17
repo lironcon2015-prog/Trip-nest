@@ -180,7 +180,8 @@ const Documents = (() => {
       G.Sync.queue();
       document.dispatchEvent(new CustomEvent('tn-data-changed'));
       const proposed = Itinerary.eventsFromExtracted(trip, doc);
-      if (proposed.length) proposeEvents(trip, doc, proposed);
+      const expense = await expenseFromExtracted(trip, doc);
+      if (proposed.length || expense) proposeEvents(trip, doc, proposed, expense);
       else if (!silent) UI.toast('הנתונים חולצו ✓', 'success');
     } catch (e) {
       console.error('extract failed', e);
@@ -204,10 +205,27 @@ const Documents = (() => {
     } catch { return null; }
   }
 
-  function proposeEvents(trip, doc, proposed) {
+  /* a booking with a total → expense proposal; skipped when this doc already produced one */
+  const DOC_TO_EXPENSE_CAT = { flight: 'flight', stay: 'stay', car: 'car', insurance: 'insurance', attraction: 'attraction' };
+  async function expenseFromExtracted(trip, doc) {
+    const ex = doc.extracted || {};
+    const amount = Number(ex.amount);
+    if (!(amount > 0)) return null;
+    if ((await DB.byTrip('expenses', trip.id)).some(e => e.docId === doc.id)) return null;
+    return {
+      tripId: trip.id, docId: doc.id, amount,
+      title: ex.title || doc.fileName,
+      currency: UI.normCur(ex.currency),
+      category: DOC_TO_EXPENSE_CAT[doc.category] || 'other',
+      date: ex.checkIn || ex.flights?.[0]?.depDate || ex.dates?.[0]?.date || UI.todayISO(),
+    };
+  }
+
+  function proposeEvents(trip, doc, proposed, expense = null) {
+    const expCat = expense ? UI.expCat(expense.category) : null;
     UI.openModal({
-      title: 'נמצאו אירועים למסלול',
-      confirmLabel: 'הוספה לתוכנית',
+      title: proposed.length ? 'נמצאו אירועים למסלול' : 'נמצאה הוצאה לתקציב',
+      confirmLabel: 'הוספה',
       bodyHTML: `
         <p class="text-sm text-slate-500 mb-3">מתוך "${UI.esc(doc.extracted?.title || doc.fileName)}":</p>
         <div class="space-y-2">${proposed.map((ev, i) => `
@@ -215,13 +233,21 @@ const Documents = (() => {
             <input type="checkbox" class="pe-check accent-indigo-600 w-4 h-4" data-i="${i}" checked>
             <span class="w-8 h-8 rounded-lg ${UI.eventType(ev.type).tint} flex items-center justify-center shrink-0">${UI.icon(UI.eventType(ev.type).icon, 'w-4 h-4')}</span>
             <span class="text-sm"><b>${UI.esc(ev.title)}</b><br><span class="text-xs text-slate-400">${UI.fmtDate(ev.date)}${ev.time ? ' · ' + ev.time : ''}</span></span>
-          </label>`).join('')}</div>`,
+          </label>`).join('')}
+        ${expense ? `
+          <label class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+            <input type="checkbox" id="pe-expense" class="accent-indigo-600 w-4 h-4" checked>
+            <span class="w-8 h-8 rounded-lg ${expCat.tint} flex items-center justify-center shrink-0">${UI.icon(expCat.icon, 'w-4 h-4')}</span>
+            <span class="text-sm"><b>הוצאה: ${UI.esc(expense.title)}</b><br><span class="text-xs text-slate-400" dir="ltr">${UI.fmtMoney(expense.amount, expense.currency)}</span> <span class="text-xs text-slate-400">· ${expCat.he}</span></span>
+          </label>` : ''}</div>`,
       onConfirm: async () => {
         const checks = [...document.querySelectorAll('.pe-check')];
         let n = 0;
         for (const c of checks) if (c.checked) { await DB.put('events', proposed[+c.dataset.i]); n++; }
-        if (n) { G.Sync.queue(); document.dispatchEvent(new CustomEvent('tn-data-changed')); }
-        UI.toast(`${n} אירועים נוספו לתוכנית ✓`, 'success');
+        let x = 0;
+        if (expense && document.getElementById('pe-expense')?.checked) { await DB.put('expenses', expense); x = 1; }
+        if (n + x) { G.Sync.queue(); document.dispatchEvent(new CustomEvent('tn-data-changed')); }
+        UI.toast([n ? `${n} אירועים נוספו לתוכנית` : '', x ? 'ההוצאה נוספה לתקציב' : ''].filter(Boolean).join(' · ') + ' ✓', 'success');
       },
     });
   }

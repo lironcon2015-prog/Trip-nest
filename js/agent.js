@@ -27,7 +27,7 @@ const Agent = (() => {
   const DEFAULT_PERSONA = `אתה "נסטו" 🦉 — עוזר הטיולים של המשפחה באפליקציית "Navigo".
 אתה חם, מצחיק בקטנה, ותכליתי. אתה עונה בעברית, קצר ולעניין, עם אימוג׳י פה ושם.
 אתה מכיר את כל הטיולים, המסמכים, התוכניות והרשימות של המשפחה ועוזר לתכנן, לארגן ולהזכיר.
-כשמתאים — הצע פעולות (הוספת אירועים, רשימות) באמצעות הכלים שלך. לעולם אל תמציא נתונים שאינם בקונטקסט.`;
+כשמתאים — הצע פעולות (הוספת אירועים, רשימות, הוצאות לתקציב) באמצעות הכלים שלך. לעולם אל תמציא נתונים שאינם בקונטקסט.`;
 
   const TOOLS = [
     {
@@ -92,6 +92,25 @@ const Agent = (() => {
       },
     },
     {
+      name: 'add_expense',
+      description: 'הוספת הוצאה לתקציב הטיול (טיסות, לינה, מסעדות, אטרקציות וכו׳)',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          tripId: { type: 'STRING' }, title: { type: 'STRING' },
+          amount: { type: 'NUMBER' }, currency: { type: 'STRING', description: '₪|€|$|£' },
+          category: { type: 'STRING', description: 'flight|stay|car|food|attraction|insurance|shopping|other' },
+          date: { type: 'STRING', description: 'YYYY-MM-DD, לא חובה' },
+        },
+        required: ['tripId', 'title', 'amount'],
+      },
+    },
+    {
+      name: 'delete_expense',
+      description: 'מחיקת הוצאה מתקציב הטיול',
+      parameters: { type: 'OBJECT', properties: { expenseId: { type: 'STRING' } }, required: ['expenseId'] },
+    },
+    {
       name: 'remember_note',
       description: 'שמירת עובדה לזיכרון ארוך-טווח (העדפות, החלטות, מידע שכדאי לזכור לטיולים הבאים). השתמש כשהמשפחה מספרת משהו ששווה לזכור.',
       parameters: {
@@ -150,6 +169,17 @@ const Agent = (() => {
         await DB.put('documents', d);
         return { ok: true };
       }
+      case 'add_expense': {
+        const x = await DB.put('expenses', {
+          tripId: args.tripId, title: args.title, amount: Number(args.amount),
+          currency: UI.normCur(args.currency), category: args.category || 'other',
+          date: args.date || UI.todayISO(), payerId: null,
+        });
+        return { ok: true, expenseId: x.id };
+      }
+      case 'delete_expense':
+        await DB.remove('expenses', args.expenseId);
+        return { ok: true };
       case 'remember_note': {
         const notes = (await DB.settings.get('agentNotes')) || [];
         const n = { id: DB.uid(), note: args.note, tripId: args.tripId || null, createdAt: Date.now() };
@@ -179,6 +209,8 @@ const Agent = (() => {
       case 'create_checklist': return `📝 יצירת רשימה "<b>${UI.esc(args.title)}</b>" עם ${(args.items || []).length} פריטים`;
       case 'add_checklist_items': return `📝 הוספת ${(args.items || []).length} פריטים לרשימה`;
       case 'set_document_category': return `🏷️ שינוי קטגוריית מסמך ל"${UI.cat(args.category).he}"`;
+      case 'add_expense': return `💰 הוספת הוצאה: <b>${UI.esc(args.title)}</b> · ${UI.fmtMoney(args.amount, UI.normCur(args.currency))}`;
+      case 'delete_expense': return '🗑️ מחיקת הוצאה מהתקציב';
       case 'remember_note': return `🧠 לזכור: <b>${UI.esc(args.note)}</b>`;
       case 'forget_note': return '🧠 מחיקת פתק מהזיכרון';
       default: return UI.esc(name);
@@ -202,6 +234,7 @@ const Agent = (() => {
       };
       const past = t.endDate && t.endDate < ctx.today;
       if (past) { ctx.trips.push({ ...base, past: true }); continue; }
+      const expenses = await DB.byTrip('expenses', t.id);
       ctx.trips.push({
         ...base,
         documents: (await DB.byTrip('documents', t.id)).map(d => ({
@@ -213,6 +246,13 @@ const Agent = (() => {
         checklists: (await DB.byTrip('checklists', t.id)).map(l => ({
           id: l.id, title: l.title, items: l.items.map(i => ({ text: i.text, done: i.done })),
         })),
+        expenses: expenses.map(x => ({
+          id: x.id, title: x.title, amount: x.amount, currency: UI.normCur(x.currency),
+          category: x.category || 'other', date: x.date,
+        })),
+        // precomputed so the model doesn't do arithmetic: ₪ totals via trip fx rates
+        costSummary: UI.expenseTotals(expenses, t.fxRates),
+        budget: t.budget || null,
       });
     }
     return ctx;

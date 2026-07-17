@@ -38,6 +38,8 @@ const UI = (() => {
     ban: '<path d="M18.36 18.36A9 9 0 005.64 5.64m12.72 12.72A9 9 0 015.64 5.64m12.72 12.72L5.64 5.64"/>',
     flask: '<path d="M9.75 3v5.17c0 .6-.24 1.17-.66 1.6L4.3 14.55a2.25 2.25 0 001.59 3.84h12.22a2.25 2.25 0 001.59-3.84l-4.79-4.78a2.25 2.25 0 01-.66-1.6V3m-6 0h7.5M9 15h6"/>',
     heart: '<path d="M21 8.25c0-2.49-2.1-4.5-4.69-4.5-1.94 0-3.6 1.13-4.31 2.73a4.72 4.72 0 00-4.31-2.73C5.1 3.75 3 5.76 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/>',
+    bag: '<path d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.36-2 1.26 12a1.13 1.13 0 01-1.12 1.25H4.25a1.13 1.13 0 01-1.12-1.25l1.26-12a1.13 1.13 0 011.12-1h12.98c.57 0 1.06.43 1.12 1z"/>',
+    sliders: '<path d="M10.5 6h10M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.5 6H7.5m3 12h10m-10 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-4 0H7.5m9-6h4m-4 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-10 0h10"/>',
   };
   const icon = (name, cls = 'w-5 h-5') =>
     `<svg class="tn-ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.doc}</svg>`;
@@ -66,6 +68,47 @@ const UI = (() => {
     { id: 'other', he: 'אחר', emoji: '📍', icon: 'pin', tint: 'bg-slate-100 text-slate-500' },
   ];
   const eventType = (id) => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES[EVENT_TYPES.length - 1];
+
+  const EXPENSE_CATEGORIES = [
+    { id: 'flight', he: 'טיסות', icon: 'plane', tint: 'bg-sky-100 text-sky-600', bar: 'bg-sky-400' },
+    { id: 'stay', he: 'לינה', icon: 'bed', tint: 'bg-violet-100 text-violet-600', bar: 'bg-violet-400' },
+    { id: 'car', he: 'תחבורה', icon: 'car', tint: 'bg-amber-100 text-amber-600', bar: 'bg-amber-400' },
+    { id: 'food', he: 'אוכל', icon: 'food', tint: 'bg-orange-100 text-orange-600', bar: 'bg-orange-400' },
+    { id: 'attraction', he: 'אטרקציות', icon: 'ticket', tint: 'bg-rose-100 text-rose-600', bar: 'bg-rose-400' },
+    { id: 'insurance', he: 'ביטוח', icon: 'shield', tint: 'bg-emerald-100 text-emerald-600', bar: 'bg-emerald-400' },
+    { id: 'shopping', he: 'קניות', icon: 'bag', tint: 'bg-pink-100 text-pink-600', bar: 'bg-pink-400' },
+    { id: 'other', he: 'אחר', icon: 'wallet', tint: 'bg-slate-100 text-slate-500', bar: 'bg-slate-400' },
+  ];
+  const expCat = (id) => EXPENSE_CATEGORIES.find(c => c.id === id) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
+
+  const CURRENCIES = ['₪', '€', '$', '£'];
+  const CUR_ALIASES = { EUR: '€', USD: '$', GBP: '£', ILS: '₪', NIS: '₪', SHEKEL: '₪' };
+  const normCur = (c) => { c = String(c || '₪').trim(); return CUR_ALIASES[c.toUpperCase()] || c; };
+
+  /* trip.fxRates = { '€': 4.0, ... } — ₪ per unit; ₪ passes through, missing rate → null */
+  const toILS = (amount, cur, rates) => {
+    cur = normCur(cur);
+    if (cur === '₪') return Number(amount || 0);
+    const r = Number((rates || {})[cur]);
+    return r > 0 ? Number(amount || 0) * r : null;
+  };
+  /* ils = convertible sum; leftover = per-currency sums with no rate; byCat only over convertible */
+  const expenseTotals = (expenses, rates) => {
+    const t = { ils: 0, byCat: {}, leftover: {}, hasLeftover: false };
+    for (const x of expenses) {
+      const v = toILS(x.amount, x.currency, rates);
+      if (v === null) {
+        const c = normCur(x.currency);
+        t.leftover[c] = (t.leftover[c] || 0) + Number(x.amount || 0);
+        t.hasLeftover = true;
+        continue;
+      }
+      t.ils += v;
+      const c = x.category || 'other';
+      t.byCat[c] = (t.byCat[c] || 0) + v;
+    }
+    return t;
+  };
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 
@@ -294,6 +337,7 @@ const UI = (() => {
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
     fileToDataURL, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, MONTHS_S, init, icon, ICONS,
+    EXPENSE_CATEGORIES, expCat, CURRENCIES, normCur, toILS, expenseTotals,
   };
 })();
 window.UI = UI;
