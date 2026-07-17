@@ -23,7 +23,10 @@ const Documents = (() => {
       <div class="grid grid-cols-2 gap-3 mb-5">${grid}</div>
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-bold text-slate-800">כל המסמכים</h3>
-        <button id="doc-email-import" class="text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full">${UI.icon('mail', 'w-3.5 h-3.5')} ייבוא מהמייל</button>
+        <div class="flex gap-1.5">
+          <button id="doc-email-import" class="text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full">${UI.icon('mail', 'w-3.5 h-3.5')} ייבוא מהמייל</button>
+          <button id="doc-add" class="text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full">${UI.icon('plus', 'w-3.5 h-3.5')} הוספה</button>
+        </div>
       </div>
       <div id="doc-list" class="space-y-2.5"></div>`;
 
@@ -31,6 +34,7 @@ const Documents = (() => {
     container.querySelectorAll('.doc-cat').forEach(b =>
       b.addEventListener('click', () => renderList(trip, docs.filter(d => (d.category || 'other') === b.dataset.cat), document.getElementById('doc-list'), UI.cat(b.dataset.cat).he)));
     document.getElementById('doc-email-import').addEventListener('click', () => emailImport(trip));
+    document.getElementById('doc-add').addEventListener('click', () => addMenu(trip));
   }
 
   function renderList(trip, docs, el, filterLabel = null) {
@@ -105,19 +109,88 @@ const Documents = (() => {
       const files = [...input.files];
       input.remove();
       if (!files.length) return;
-      const docs = [];
-      for (const f of files) {
-        docs.push(await DB.put('documents', {
-          tripId: trip.id, fileName: f.name || `צילום-${Date.now()}.jpg`, mimeType: f.type,
-          size: f.size, blob: f, category: category || guessCategory(f.name), source: capture ? 'camera' : 'upload',
-        }));
-      }
-      UI.toast(`${docs.length} מסמכים נוספו ✓`, 'success');
-      G.Sync.queue();
-      document.dispatchEvent(new CustomEvent('tn-data-changed'));
-      for (const d of docs) extractDoc(trip, d, { silent: true }); // passports work locally even without a Gemini key
+      await saveDocs(trip, files, { category, source: capture ? 'camera' : 'upload' });
     });
     input.click();
+  }
+
+  async function saveDocs(trip, files, { category = null, source = 'upload' } = {}) {
+    const docs = [];
+    for (const f of files) {
+      docs.push(await DB.put('documents', {
+        tripId: trip.id, fileName: f.name || `צילום-${Date.now()}.jpg`, mimeType: f.type,
+        size: f.size, blob: f, category: category || guessCategory(f.name), source,
+      }));
+    }
+    UI.toast(`${docs.length} מסמכים נוספו ✓`, 'success');
+    G.Sync.queue();
+    document.dispatchEvent(new CustomEvent('tn-data-changed'));
+    for (const d of docs) extractDoc(trip, d, { silent: true }); // passports work locally even without a Gemini key
+  }
+
+  /* paste documents/images straight from the clipboard — like pasting into a chat.
+     Two routes into the same basket: a paste target (Ctrl+V / long-press → הדבק)
+     and the async clipboard API where available. */
+  function pasteFlow(trip) {
+    const files = [];
+    const ext = (t) => (t.split('/')[1] || 'bin').split('+')[0];
+    UI.openModal({
+      title: 'הדבקה מהלוח',
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <div id="pf-target" contenteditable="true" inputmode="none" class="w-full min-h-24 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4 text-center text-xs text-slate-400 outline-none flex items-center justify-center">
+          הקישו כאן והדביקו (Ctrl+V או לחיצה ארוכה ← הדבקה)</div>
+        <button type="button" id="pf-clip" class="tn-btn-secondary w-full mt-3 !text-xs">${UI.icon('doc', 'w-3.5 h-3.5')} הדבקה מהלוח</button>
+        <div id="pf-items" class="flex flex-wrap gap-2 mt-3"></div>`,
+      onConfirm: async () => {
+        if (!files.length) throw new Error('הלוח ריק — העתיקו תמונה או מסמך ונסו שוב');
+        await saveDocs(trip, files, { source: 'paste' });
+      },
+    });
+    const list = () => {
+      document.getElementById('pf-items').innerHTML = files.map(f => f.type.startsWith('image/')
+        ? `<img src="${URL.createObjectURL(f)}" class="w-14 h-14 object-cover rounded-xl ring-1 ring-slate-200">`
+        : `<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-1.5 rounded-full">${UI.esc(f.name)}</span>`).join('');
+    };
+    const add = (blob, name) => {
+      files.push(new File([blob], name || `הדבקה-${Date.now()}.${ext(blob.type)}`, { type: blob.type }));
+      list();
+    };
+    const target = document.getElementById('pf-target');
+    target.addEventListener('paste', (e) => {
+      e.preventDefault();
+      for (const it of e.clipboardData?.items || [])
+        if (it.kind === 'file') { const f = it.getAsFile(); if (f) add(f, f.name); }
+    });
+    document.getElementById('pf-clip').addEventListener('click', async () => {
+      try {
+        for (const item of await navigator.clipboard.read()) {
+          const type = item.types.find(t => t.startsWith('image/') || t === 'application/pdf');
+          if (type) add(await item.getType(type), null);
+        }
+        if (!files.length) UI.toast('לא נמצאו תמונות או מסמכים בלוח', 'info');
+      } catch {
+        UI.toast('אין גישה ללוח — הדביקו בתיבה למעלה', 'info');
+        target.focus();
+      }
+    });
+  }
+
+  // one entry point for all three add routes (camera / files / clipboard)
+  function addMenu(trip) {
+    UI.openModal({
+      title: 'הוספת מסמכים',
+      hideConfirm: true,
+      bodyHTML: `<div class="space-y-2">
+        <button id="am-cam" class="tn-menu-btn">${UI.icon('camera', 'w-4 h-4')} צילום</button>
+        <button id="am-up" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} העלאת קבצים ותמונות</button>
+        <button id="am-paste" class="tn-menu-btn">${UI.icon('doc', 'w-4 h-4')} הדבקה מהלוח</button>
+      </div>`,
+    });
+    // each handler runs inside its own tap gesture, so the file input opens synchronously (iOS)
+    document.getElementById('am-cam').addEventListener('click', () => { UI.closeModal(); addFlow(trip, { capture: true }); });
+    document.getElementById('am-up').addEventListener('click', () => { UI.closeModal(); addFlow(trip); });
+    document.getElementById('am-paste').addEventListener('click', () => { UI.closeModal(); pasteFlow(trip); });
   }
 
   function guessCategory(name = '') {
@@ -257,18 +330,17 @@ const Documents = (() => {
 
   /* --- Gmail import --- */
   async function emailImport(trip) {
-    const keywords = await G.gmail.keywords();
     const both = await G.hasPartnerBridge();
     UI.openModal({
       title: 'ייבוא מהמייל',
       confirmLabel: 'סריקה',
       bodyHTML: `
         <p class="text-xs text-slate-500 mb-3">${both
-          ? 'סורק את תיבות ה-Gmail של שניכם לפי מילות המפתח המשותפות (ניתן לערוך בהגדרות).'
-          : 'סורק את תיבת ה-Gmail שלך לפי מילות המפתח המשותפות. כדי לסרוק גם את התיבה של בן/בת הזוג — הוסיפו את הגשר שלו/שלה בהגדרות.'}</p>
-        <div class="flex flex-wrap gap-1.5 mb-3">${keywords.slice(0, 12).map(k => `<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">${UI.esc(k)}</span>`).join('')}${keywords.length > 12 ? `<span class="text-[10px] text-slate-400">+${keywords.length - 12}</span>` : ''}</div>
-        <div class="mb-3"><label class="tn-label">🔎 חיפוש חד-פעמי (אופציונלי)</label>
-          <input id="ei-adhoc" class="tn-input" placeholder="מילה או ביטוי — יחליף את מילות המפתח לסריקה זו">
+          ? 'סורק מיילים שסומנו בתווית <b>Navigo</b> בתיבות של שניכם.'
+          : 'סורק מיילים שסומנו בתווית <b>Navigo</b> בתיבה שלך. כדי לסרוק גם את התיבה של בן/בת הזוג — הוסיפו את הגשר שלו/שלה בהגדרות.'}
+          סמנו מייל בתווית ידנית, או הגדירו פילטר ב-Gmail שמדביק אותה אוטומטית (למשל לכל מייל מ-Booking או מחברת תעופה).</p>
+        <div class="mb-3"><label class="tn-label">חיפוש חד-פעמי (אופציונלי)</label>
+          <input id="ei-adhoc" class="tn-input" placeholder="מילה או ביטוי — יחפש בכל התיבה, בלי קשר לתווית">
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <input id="ei-attach" type="checkbox" class="accent-indigo-600 w-4 h-4" checked>
@@ -280,11 +352,10 @@ const Documents = (() => {
         </div>`,
       onConfirm: async () => {
         const adhoc = document.getElementById('ei-adhoc').value.trim();
-        const q = G.gmail.buildQuery(adhoc ? [adhoc] : keywords, {
+        const q = G.gmail.buildQuery(adhoc ? [adhoc] : null, {
           after: document.getElementById('ei-after').value || null,
           before: document.getElementById('ei-before').value || null,
           attachmentsOnly: document.getElementById('ei-attach').checked,
-          exclude: adhoc ? [] : await G.gmail.negKeywords(),
         });
         const results = await G.gmail.search(q);
         showEmailResults(trip, results);
@@ -301,7 +372,7 @@ const Documents = (() => {
 
   async function showEmailResults(trip, results) {
     if (!results.length) {
-      UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'נסו להרחיב את טווח התאריכים או להוסיף מילות מפתח בהגדרות') });
+      UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'ודאו שהמיילים מסומנים בתווית Navigo ב-Gmail, או נסו להרחיב את טווח התאריכים') });
       return;
     }
     const partnerEmail = await DB.settings.get('partnerEmail');
@@ -353,6 +424,6 @@ const Documents = (() => {
     });
   }
 
-  return { renderTab, addFlow, extractDoc, emailImport, guessCategory };
+  return { renderTab, addFlow, addMenu, pasteFlow, extractDoc, emailImport, guessCategory };
 })();
 window.Documents = Documents;

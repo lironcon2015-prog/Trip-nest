@@ -206,9 +206,13 @@ const G = (() => {
     },
     // shared exclusion list — emails containing these words are filtered out of every scan
     async negKeywords() { return (await DB.settings.get('negKeywords')) || []; },
+    // the standard scan pulls only mails the user labeled 'Navigo' in Gmail
+    // (manually or via a Gmail filter) — precise, no keyword guessing. Pass
+    // explicit terms (ad-hoc search) to search the whole mailbox instead.
     buildQuery(keywords, { after = null, before = null, newerDays = 180, attachmentsOnly = false, exclude = [] } = {}) {
-      const kw = '(' + keywords.map(k => `"${k}"`).join(' OR ') + ')';
-      let q = kw;
+      let q = keywords && keywords.length
+        ? '(' + keywords.map(k => `"${k}"`).join(' OR ') + ')'
+        : 'label:navigo';
       if (after) q += ` after:${after.replaceAll('-', '/')}`;
       if (before) q += ` before:${before.replaceAll('-', '/')}`;
       if (!after && !before) q += ` newer_than:${newerDays}d`;

@@ -292,9 +292,17 @@ await test('סריקת Gmail לפי מילות מפתח', async () => {
 await test('שאילתת חיפוש: חד-פעמי + רק עם קבצים מצורפים', async () => {
   const q = G.gmail.buildQuery(['ryanair'], { after: '2026-06-01', attachmentsOnly: true });
   assert(q.includes('"ryanair"'), 'ad-hoc keyword missing: ' + q);
+  assert(!q.includes('label:'), 'ad-hoc search must cover the whole mailbox: ' + q);
   assert(q.includes('has:attachment'), 'attachment filter missing: ' + q);
   const q2 = G.gmail.buildQuery(['טיסה'], { after: '2026-06-01' });
   assert(!q2.includes('has:attachment'), 'attachment filter must be opt-in');
+});
+
+await test('שאילתת חיפוש: ברירת המחדל היא תווית Navigo', async () => {
+  const q = G.gmail.buildQuery(null, { after: '2026-06-01', attachmentsOnly: true });
+  assert(q.includes('label:navigo'), 'label scan missing: ' + q);
+  assert(!q.includes('OR'), 'label scan must not carry keywords: ' + q);
+  assert(q.includes('after:2026/06/01') && q.includes('has:attachment'), 'filters missing: ' + q);
 });
 
 await test('שאילתת חיפוש: מילות סינון-החוצה', async () => {

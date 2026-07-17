@@ -12,8 +12,6 @@ const Settings = (() => {
       DB.settings.get('myEmail'), DB.settings.get('partnerEmail'),
       Food.profile(), Food.favoritesRaw(), Food.viewMode(),
     ]);
-    const keywords = await G.gmail.keywords();
-    const negKeywords = await G.gmail.negKeywords();
     const geminiModels = await Gemini.models();
 
     el.innerHTML = `
@@ -57,29 +55,16 @@ const Settings = (() => {
         </div>
       </section>
 
-      <!-- Keywords -->
+      <!-- Email scan (Navigo label) -->
       <section class="tn-card">
-        <h3 class="tn-card-title">${UI.icon('mail', 'w-[18px] h-[18px] text-indigo-500')} מילות מפתח לסריקת מייל</h3>
-        <p class="text-[11px] text-slate-400 mb-3">משותפות לשניכם (מסתנכרנות דרך הדרייב). המיילים נסרקים לפי מילים אלה.</p>
-        <div id="st-keywords" class="flex flex-wrap gap-1.5 mb-3">${keywords.map((k, i) => `
-          <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-xs px-2.5 py-1 rounded-full">
-            ${UI.esc(k)}<button class="kw-del text-indigo-300" data-i="${i}">✕</button></span>`).join('')}</div>
-        <form id="st-kw-form" class="flex gap-2">
-          <input id="st-kw-input" class="tn-input !py-2 text-sm flex-1" placeholder="מילת מפתח חדשה…">
-          <button class="tn-btn-secondary">הוספה</button>
-        </form>
-        <button id="st-kw-reset" class="text-[11px] text-slate-400 mt-2">איפוס לברירת המחדל</button>
-        <div class="mt-4 pt-4 border-t border-slate-100">
-          <div class="text-xs font-semibold text-slate-600 mb-1">${UI.icon('ban', 'w-3.5 h-3.5')} סינון החוצה</div>
-          <p class="text-[11px] text-slate-400 mb-2">מיילים שמכילים מילים אלה יוסתרו מהתוצאות — למשל שמות חנויות שמציפות אתכם ("זארה", "קולנוע").</p>
-          <div class="flex flex-wrap gap-1.5 mb-2">${negKeywords.map((k, i) => `
-            <span class="inline-flex items-center gap-1 bg-red-50 text-red-500 text-xs px-2.5 py-1 rounded-full">
-              ${UI.esc(k)}<button class="nkw-del text-red-300" data-i="${i}">✕</button></span>`).join('') || '<span class="text-[11px] text-slate-300">אין מילות סינון</span>'}</div>
-          <form id="st-nkw-form" class="flex gap-2">
-            <input id="st-nkw-input" class="tn-input !py-2 text-sm flex-1" placeholder="מילה לסינון…">
-            <button class="tn-btn-secondary">הוספה</button>
-          </form>
-        </div>
+        <h3 class="tn-card-title">${UI.icon('mail', 'w-[18px] h-[18px] text-indigo-500')} סריקת מייל — תווית Navigo</h3>
+        <p class="text-[11px] text-slate-400 leading-relaxed">הסריקה מביאה רק מיילים שסומנו ב-Gmail בתווית <b>Navigo</b> — בלי ניחושים ובלי זבל. איך מסמנים:</p>
+        <ul class="text-[11px] text-slate-400 leading-relaxed list-disc pr-4 mt-1.5 space-y-1">
+          <li><b>ידנית</b>: פתיחת המייל ב-Gmail ← תפריט ⋮ ← "שינוי תוויות" ← Navigo (יוצרים את התווית בפעם הראשונה).</li>
+          <li><b>אוטומטית</b>: ב-Gmail — חיפוש שולח קבוע (למשל Booking או חברת תעופה) ← "יצירת פילטר" ← "החלת התווית Navigo". מאותו רגע כל מייל כזה מסומן לבד.</li>
+          <li>עושים זאת בכל תיבה שנסרקת — שלך ושל בן/בת הזוג.</li>
+        </ul>
+        <p class="text-[11px] text-slate-400 mt-1.5">חיפוש חופשי בכל התיבה עדיין זמין דרך "חיפוש חד-פעמי" במסך הייבוא.</p>
       </section>
 
       <!-- Gemini -->
@@ -244,40 +229,6 @@ const Settings = (() => {
 
     document.getElementById('st-sync-now').addEventListener('click', (e) =>
       UI.busy(e.currentTarget, () => G.Sync.run({ silent: false })).then(render));
-
-    /* keywords */
-    document.querySelectorAll('.kw-del').forEach(b => b.addEventListener('click', async () => {
-      const kw = await G.gmail.keywords();
-      kw.splice(+b.dataset.i, 1);
-      await DB.settings.set('keywords', kw); await DB.touchShared(); G.Sync.queue();
-      render();
-    }));
-    document.getElementById('st-kw-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const val = document.getElementById('st-kw-input').value.trim();
-      if (!val) return;
-      const kw = await G.gmail.keywords();
-      if (!kw.includes(val)) { kw.push(val); await DB.settings.set('keywords', kw); await DB.touchShared(); G.Sync.queue(); }
-      render();
-    });
-    document.getElementById('st-kw-reset').addEventListener('click', async () => {
-      await DB.settings.set('keywords', [...G.DEFAULT_KEYWORDS]); await DB.touchShared(); G.Sync.queue();
-      UI.toast('מילות המפתח אופסו', 'success'); render();
-    });
-    document.querySelectorAll('.nkw-del').forEach(b => b.addEventListener('click', async () => {
-      const kw = await G.gmail.negKeywords();
-      kw.splice(+b.dataset.i, 1);
-      await DB.settings.set('negKeywords', kw); await DB.touchShared(); G.Sync.queue();
-      render();
-    }));
-    document.getElementById('st-nkw-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const val = document.getElementById('st-nkw-input').value.trim();
-      if (!val) return;
-      const kw = await G.gmail.negKeywords();
-      if (!kw.includes(val)) { kw.push(val); await DB.settings.set('negKeywords', kw); await DB.touchShared(); G.Sync.queue(); }
-      render();
-    });
 
     /* gemini */
     document.getElementById('st-save-gemini').addEventListener('click', async () => {

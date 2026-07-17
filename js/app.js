@@ -108,11 +108,9 @@ const App = (() => {
 
   /* ---------- quick actions ---------- */
   async function quickAction(action) {
-    // 'scan' must open the file picker synchronously within the tap gesture —
-    // an await before input.click() makes iOS Safari swallow it silently
     if (action === 'scan') {
       const t = Home.next?.trip;
-      if (t) { Documents.addFlow(t, { capture: true }); return; }
+      if (t) { Documents.addMenu(t); return; }
     }
     const next = await Itinerary.nextTrip();
     const needTrip = async () => {
@@ -121,7 +119,7 @@ const App = (() => {
       Trips.editModal();
       return null;
     };
-    if (action === 'scan') { const t = await needTrip(); if (t) Documents.addFlow(t, { capture: true }); }
+    if (action === 'scan') { const t = await needTrip(); if (t) Documents.addMenu(t); }
     else if (action === 'vault') Vault.open();
     else if (action === 'packing') {
       const t = await needTrip();
@@ -255,9 +253,6 @@ const App = (() => {
   async function init() {
     await DB.init();
     UI.init();
-
-    // seed shared keyword list on first run
-    await G.gmail.keywords();
 
     // nav
     document.querySelectorAll('#bottom-nav [data-nav]').forEach(b =>
