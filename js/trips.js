@@ -359,7 +359,10 @@ const Trips = (() => {
             <div class="text-xs text-slate-400 mb-1">סה״כ הוצאות בטיול</div>
             <div class="text-2xl font-bold text-slate-800" dir="ltr">${[t.ils > 0 || !t.hasLeftover ? UI.fmtMoney(t.ils) : '', leftoverStr].filter(Boolean).join(' + ')}</div>
           </div>
-          <button id="bd-setup" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5 shrink-0">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
+          <div class="flex flex-col items-end gap-1.5 shrink-0">
+            <button id="bd-scan" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5">${UI.icon('camera', 'w-3.5 h-3.5')} צילום קבלה</button>
+            <button id="bd-setup" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
+          </div>
         </div>
         ${avgLine ? `<div class="text-[11px] text-slate-400 mt-0.5">${avgLine}</div>` : ''}
         ${t.hasLeftover ? '<div class="text-[11px] text-amber-600 mt-1">יש הוצאות במטבע ללא שער המרה — הגדירו שער ב"יעדים ושערים" לסיכום מלא</div>' : ''}
@@ -389,6 +392,7 @@ const Trips = (() => {
       }).join('')}</div>` : UI.emptyState('wallet', _expFilter ? 'אין הוצאות בקטגוריה הזו' : 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
 
     document.getElementById('bd-setup').addEventListener('click', () => budgetSetupModal(trip));
+    document.getElementById('bd-scan').addEventListener('click', () => Documents.addFlow(trip, { capture: true, category: 'receipt' }));
     panel.querySelectorAll('.exp-filter').forEach(b => b.addEventListener('click', () => {
       _expFilter = b.dataset.cat; renderBudget(trip, panel);
     }));

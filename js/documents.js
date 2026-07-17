@@ -91,7 +91,7 @@ const Documents = (() => {
   }
 
   /* --- add flow (file / camera) --- */
-  function addFlow(trip, { capture = false } = {}) {
+  function addFlow(trip, { capture = false, category = null } = {}) {
     document.getElementById('tn-doc-input')?.remove();
     const input = document.createElement('input');
     input.type = 'file';
@@ -109,7 +109,7 @@ const Documents = (() => {
       for (const f of files) {
         docs.push(await DB.put('documents', {
           tripId: trip.id, fileName: f.name || `צילום-${Date.now()}.jpg`, mimeType: f.type,
-          size: f.size, blob: f, category: guessCategory(f.name), source: capture ? 'camera' : 'upload',
+          size: f.size, blob: f, category: category || guessCategory(f.name), source: capture ? 'camera' : 'upload',
         }));
       }
       UI.toast(`${docs.length} מסמכים נוספו ✓`, 'success');
@@ -124,6 +124,7 @@ const Documents = (() => {
     const n = name.toLowerCase();
     if (/(flight|ticket|boarding|טיסה|כרטיס)/.test(n)) return 'flight';
     if (/(hotel|booking|airbnb|מלון|לינה)/.test(n)) return 'stay';
+    if (/(receipt|invoice|קבלה|חשבונית)/.test(n)) return 'receipt';
     if (/(insurance|ביטוח)/.test(n)) return 'insurance';
     if (/(car|rental|רכב|השכרה)/.test(n)) return 'car';
     if (/(passport|דרכון)/.test(n)) return 'passport';
@@ -212,11 +213,13 @@ const Documents = (() => {
     const amount = Number(ex.amount);
     if (!(amount > 0)) return null;
     if ((await DB.byTrip('expenses', trip.id)).some(e => e.docId === doc.id)) return null;
+    // the model's expenseCategory (e.g. restaurant receipt → food) wins over the doc category mapping
+    const modelCat = UI.EXPENSE_CATEGORIES.some(c => c.id === ex.expenseCategory) ? ex.expenseCategory : null;
     return {
       tripId: trip.id, docId: doc.id, amount,
       title: ex.title || doc.fileName,
       currency: UI.normCur(ex.currency),
-      category: DOC_TO_EXPENSE_CAT[doc.category] || 'other',
+      category: modelCat || DOC_TO_EXPENSE_CAT[doc.category] || 'other',
       date: ex.checkIn || ex.flights?.[0]?.depDate || ex.dates?.[0]?.date || UI.todayISO(),
     };
   }

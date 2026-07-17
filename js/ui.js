@@ -40,6 +40,7 @@ const UI = (() => {
     heart: '<path d="M21 8.25c0-2.49-2.1-4.5-4.69-4.5-1.94 0-3.6 1.13-4.31 2.73a4.72 4.72 0 00-4.31-2.73C5.1 3.75 3 5.76 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/>',
     bag: '<path d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.36-2 1.26 12a1.13 1.13 0 01-1.12 1.25H4.25a1.13 1.13 0 01-1.12-1.25l1.26-12a1.13 1.13 0 011.12-1h12.98c.57 0 1.06.43 1.12 1z"/>',
     sliders: '<path d="M10.5 6h10M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.5 6H7.5m3 12h10m-10 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-4 0H7.5m9-6h4m-4 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-10 0h10"/>',
+    receipt: '<path d="M9 14.25l6-6M9.75 9.75h.01M14.25 14.25h.01M4.75 21V5.25A2.25 2.25 0 017 3h10a2.25 2.25 0 012.25 2.25V21l-2.45-1.5L14.35 21l-2.35-1.5L9.65 21l-2.45-1.5L4.75 21z"/>',
   };
   const icon = (name, cls = 'w-5 h-5') =>
     `<svg class="tn-ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.doc}</svg>`;
@@ -53,6 +54,7 @@ const UI = (() => {
     { id: 'visa', he: 'ויזה ואשרות', emoji: '🪪', icon: 'id', tint: 'bg-indigo-100 text-indigo-600' },
     { id: 'passport', he: 'דרכון', emoji: '🛂', icon: 'id', tint: 'bg-indigo-100 text-indigo-600' },
     { id: 'attraction', he: 'אטרקציות', emoji: '🎟️', icon: 'ticket', tint: 'bg-rose-100 text-rose-600' },
+    { id: 'receipt', he: 'חשבוניות וקבלות', emoji: '🧾', icon: 'receipt', tint: 'bg-teal-100 text-teal-600' },
     { id: 'other', he: 'אחר', emoji: '📄', icon: 'doc', tint: 'bg-slate-100 text-slate-500' },
   ];
   const cat = (id) => DOC_CATEGORIES.find(c => c.id === id) || DOC_CATEGORIES[DOC_CATEGORIES.length - 1];

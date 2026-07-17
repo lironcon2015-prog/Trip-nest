@@ -94,10 +94,10 @@ const Gemini = (() => {
     return call(payload);
   }
 
-  const EXTRACT_PROMPT = `אתה מחלץ נתונים ממסמכי נסיעות (כרטיסי טיסה, הזמנות מלון, ביטוח, שוברים, דרכונים).
+  const EXTRACT_PROMPT = `אתה מחלץ נתונים ממסמכי נסיעות (כרטיסי טיסה, הזמנות מלון, ביטוח, שוברים, קבלות וחשבוניות, דרכונים).
 נתח את המסמך והחזר JSON בלבד במבנה הבא (השמט שדות שאין להם מידע, תאריכים בפורמט YYYY-MM-DD, שעות HH:MM):
 {
- "category": "flight|stay|car|insurance|visa|attraction|passport|other",
+ "category": "flight|stay|car|insurance|visa|attraction|receipt|passport|other",
  "title": "כותרת קצרה בעברית למסמך",
  "provider": "חברה/ספק",
  "confirmation": "קוד הזמנה/PNR",
@@ -106,9 +106,11 @@ const Gemini = (() => {
  "dates": [{"date":"", "time":"", "label":"תיאור קצר בעברית"}],
  "amount": 0,
  "currency": "₪|€|$|£",
+ "expenseCategory": "flight|stay|car|food|attraction|insurance|shopping|other",
  "notes": ""
 }
 amount = הסכום הכולל ששולם או לתשלום לפי המסמך (מספר בלבד); currency = מטבע הסכום. השמט אם אין מחיר במסמך.
+expenseCategory = על מה התשלום (למשל קבלה ממסעדה → food, כרטיס למוזיאון → attraction). השמט אם אין סכום.
 אם המסמך הוא דרכון: קבע category="passport" והוסף אובייקט passport:
 "passport": {"nameEn":"שם מלא באנגלית כמו בדרכון", "nameHe":"שם מלא בעברית אם מופיע", "birthDate":"", "passportNumber":"", "nationality":"", "expiryDate":"", "sex":"M|F"}`;
 
