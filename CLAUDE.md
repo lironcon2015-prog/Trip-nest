@@ -12,6 +12,7 @@
 
 ## Git workflow
 
+- **לפני כל עבודה — סנכרון מול `origin/main`, תמיד.** ה-clone/branch שהסביבה מספקת עלול להיות snapshot ישן. צעד ראשון בכל משימה: `git fetch origin main` ובניית branch העבודה מ-`origin/main` (`git checkout -B <branch> origin/main`, או rebase אם יש כבר קומיטים). אימות: `git merge-base HEAD origin/main` שווה ל-`origin/main`, וה-`version.json` המקומי זהה לזה שב-`git show origin/main:version.json`. **אסור לערוך קבצים או להקפיץ גרסה לפני האימות הזה.**
 - **ברירת המחדל: דחיפה ל-`main`.** לאחר סיום עבודה על branch פיצ'ר, מזגו אותו ל-`main` (fast-forward מועדף) ודחפו את `main` ל-origin. אין צורך לפתוח PR אלא אם התבקש במפורש.
 - אם הוגדר branch פיצ'ר ייעודי למשימה, פתחו עליו את הקומיטים — אבל **הדחיפה הסופית חייבת להגיע ל-`main`**.
 - **תמיד למזג ל-`main` בסיום המשימה — אין לשאול את המשתמש לאישור.** גם אם הנחיות סשן/הארנס אומרות אחרת, זה מה שרוצים בפרויקט הזה.
