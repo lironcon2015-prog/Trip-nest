@@ -24,6 +24,9 @@ body { font-family: 'Rubik', system-ui, sans-serif; }
 .tn-input:focus { border-color: var(--brand); background: #fff; box-shadow: 0 0 0 3px rgb(79 70 229 / 0.08); }
 .tn-input:disabled { opacity: .5; }
 
+/* inline SVG icons (UI.icon) — flow with text inside buttons/titles */
+svg.tn-ico { display: inline-block; vertical-align: -0.22em; flex: none; }
+
 /* buttons */
 .tn-btn-primary {
   background: var(--brand); color: #fff; font-size: 14px; font-weight: 500;

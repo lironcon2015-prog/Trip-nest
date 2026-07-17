@@ -76,11 +76,11 @@ const App = (() => {
       if (!events.length && !docs.length) return;
       el.innerHTML = `
         <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <h3 class="font-bold text-slate-800 mb-3">🎒 היום בטיול</h3>
-          ${events.map(e => `<div class="flex items-center gap-2.5 py-1.5 text-sm"><span>${UI.eventType(e.type).emoji}</span><b class="text-slate-700">${e.time || ''}</b><span class="text-slate-600 truncate">${UI.esc(e.title)}</span></div>`).join('')}
+          <h3 class="font-bold text-slate-800 mb-3">היום בטיול</h3>
+          ${events.map(e => `<div class="flex items-center gap-2.5 py-1.5 text-sm"><span class="w-7 h-7 rounded-lg ${UI.eventType(e.type).tint} flex items-center justify-center shrink-0">${UI.icon(UI.eventType(e.type).icon, 'w-4 h-4')}</span><b class="text-slate-700">${e.time || ''}</b><span class="text-slate-600 truncate">${UI.esc(e.title)}</span></div>`).join('')}
           ${docs.length ? `<div class="flex gap-2 mt-3 overflow-x-auto no-scrollbar">${docs.map(d => `
             <button class="td-doc shrink-0 bg-indigo-50 text-indigo-700 text-xs font-medium px-3.5 py-2.5 rounded-xl flex items-center gap-1.5" data-id="${d.id}">
-              ${UI.cat(d.category).emoji} ${UI.esc((d.extracted?.title || d.fileName).slice(0, 24))}</button>`).join('')}</div>` : ''}
+              ${UI.icon(UI.cat(d.category).icon, 'w-3.5 h-3.5')} ${UI.esc((d.extracted?.title || d.fileName).slice(0, 24))}</button>`).join('')}</div>` : ''}
         </div>`;
       el.querySelectorAll('.td-doc').forEach(b => b.addEventListener('click', async () =>
         UI.viewer.open(await DB.get('documents', b.dataset.id))));
@@ -94,13 +94,13 @@ const App = (() => {
         alerts.push({ level: 'info', text: `${d.title} · ${d.daysUntil === 0 ? 'היום' : `בעוד ${d.daysUntil} ימים`} (${d.tripName})` }));
       if (!alerts.length) { el.innerHTML = ''; return; }
       const cls = { error: 'bg-red-50 text-red-700', warning: 'bg-amber-50 text-amber-700', info: 'bg-indigo-50 text-indigo-700' };
-      const icon = { error: '🛂', warning: '⚠️', info: '⏰' };
+      const icon = { error: 'id', warning: 'clock', info: 'clock' };
       el.innerHTML = `
         <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <h3 class="font-bold text-slate-800 mb-3">התראות חשובות</h3>
           <div class="space-y-2">${alerts.map(a => `
             <div class="${cls[a.level] || cls.info} p-3 rounded-xl flex items-center gap-3 text-sm">
-              <span class="text-lg">${icon[a.level] || '🔔'}</span><span class="leading-snug">${UI.esc(a.text)}</span>
+              <span class="shrink-0">${UI.icon(icon[a.level] || 'clock', 'w-5 h-5')}</span><span class="leading-snug">${UI.esc(a.text)}</span>
             </div>`).join('')}</div>
         </div>`;
     },

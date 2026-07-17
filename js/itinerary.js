@@ -45,7 +45,7 @@ const Itinerary = (() => {
       .sort((a, b) => (a.date + (a.time || '99:99')).localeCompare(b.date + (b.time || '99:99')));
 
     if (!all.length) {
-      container.innerHTML = UI.emptyState('🗓️', 'אין עדיין תוכנית טיול', 'הוסיפו אירוע, חלצו נתונים ממסמך, או בקשו מהסוכן לבנות תוכנית') +
+      container.innerHTML = UI.emptyState('clock', 'אין עדיין תוכנית טיול', 'הוסיפו אירוע, חלצו נתונים ממסמך, או בקשו מהסוכן לבנות תוכנית') +
         `<div class="text-center"><button id="it-add-empty" class="bg-indigo-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-md active:scale-95">+ אירוע ראשון</button></div>`;
       document.getElementById('it-add-empty').addEventListener('click', () => editModal(trip));
       return;
@@ -88,12 +88,12 @@ const Itinerary = (() => {
     const deadline = e.type === 'deadline' || e.isDeadline;
     return `
       <div class="rounded-2xl p-3.5 flex items-center gap-3 ${deadline ? 'bg-amber-50' : 'bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]'}">
-        <span class="text-xl shrink-0">${t.emoji}</span>
+        <span class="w-9 h-9 rounded-xl ${deadline ? 'bg-amber-100 text-amber-600' : t.tint} flex items-center justify-center shrink-0">${UI.icon(t.icon, 'w-[18px] h-[18px]')}</span>
         <button class="flex-1 min-w-0 text-right" ${e.computed ? '' : `data-event="${e.id}"`}>
           <span class="block text-sm font-semibold ${deadline ? 'text-amber-800' : 'text-slate-800'} truncate">${UI.esc(e.title)}</span>
           <span class="block text-[11px] ${deadline ? 'text-amber-600' : 'text-slate-400'}">${e.time || ''}${e.notes ? (e.time ? ' · ' : '') + UI.esc(e.notes) : ''}${e.computed ? ' · תזכורת אוטומטית' : ''}</span>
         </button>
-        ${e.docId ? `<button class="text-lg shrink-0" data-eventdoc="${e.docId}" title="פתיחת המסמך">📎</button>` : ''}
+        ${e.docId ? `<button class="text-slate-400 shrink-0 p-1" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-5 h-5')}</button>` : ''}
       </div>`;
   }
 
@@ -109,10 +109,10 @@ const Itinerary = (() => {
             <div><label class="tn-label">שעה</label><input id="ev-time" type="time" class="tn-input" value="${ev?.time || ''}"></div>
           </div>
           <div><label class="tn-label">סוג</label>
-            <select id="ev-type" class="tn-input">${UI.EVENT_TYPES.map(t => `<option value="${t.id}" ${ev?.type === t.id ? 'selected' : ''}>${t.emoji} ${t.he}</option>`).join('')}</select></div>
+            <select id="ev-type" class="tn-input">${UI.EVENT_TYPES.map(t => `<option value="${t.id}" ${ev?.type === t.id ? 'selected' : ''}>${t.he}</option>`).join('')}</select></div>
           <div><label class="tn-label">הערות</label><input id="ev-notes" class="tn-input" value="${UI.esc(ev?.notes || '')}"></div>
-          <label class="flex items-center gap-2 text-sm text-slate-600"><input id="ev-deadline" type="checkbox" class="accent-indigo-600 w-4 h-4" ${ev?.isDeadline ? 'checked' : ''}> ⏰ מועד חשוב (מודגש)</label>
-          ${ev ? '<button id="ev-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium mt-1">🗑️ מחיקת האירוע</button>' : ''}
+          <label class="flex items-center gap-2 text-sm text-slate-600"><input id="ev-deadline" type="checkbox" class="accent-indigo-600 w-4 h-4" ${ev?.isDeadline ? 'checked' : ''}> מועד חשוב (מודגש)</label>
+          ${ev ? `<button id="ev-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium mt-1">${UI.icon('trash', 'w-4 h-4')} מחיקת האירוע</button>` : ''}
         </div>`,
       onConfirm: async () => {
         const title = document.getElementById('ev-title').value.trim();

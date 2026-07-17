@@ -8,7 +8,7 @@ const Vault = (() => {
     if (!pin || _unlocked) return true;
     return new Promise((resolve) => {
       UI.openModal({
-        title: '🔒 כספת דרכונים',
+        title: 'כספת דרכונים',
         confirmLabel: 'פתיחה',
         bodyHTML: `<input id="vault-pin" type="password" inputmode="numeric" class="tn-input text-center tracking-widest" placeholder="קוד גישה" autofocus>`,
         onConfirm: async () => {
@@ -40,7 +40,7 @@ const Vault = (() => {
             ${UI.avatarHTML(m, 'w-10 h-10')}
             <div class="flex-1"><div class="font-semibold text-slate-800 text-sm">${UI.esc(m.nameHe)}</div>
             <div class="text-[11px] text-slate-400">${mine.length ? `${mine.length} צילומים במכשיר` : 'אין צילום במכשיר הזה'}</div></div>
-            <button class="vault-add text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full" data-member="${m.id}">📷 הוספה</button>
+            <button class="vault-add text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full" data-member="${m.id}">${UI.icon('camera', 'w-3.5 h-3.5')} הוספה</button>
           </div>
           ${mine.length ? `<div class="grid grid-cols-3 gap-2">${mine.map(v => `
             <div class="relative group">
@@ -52,14 +52,14 @@ const Vault = (() => {
     }).join('');
 
     UI.openModal({
-      title: '🛂 כספת דרכונים',
+      title: 'כספת דרכונים',
       hideConfirm: true,
       bodyHTML: `
         <div class="bg-amber-50 text-amber-700 text-xs p-3 rounded-xl mb-4 flex gap-2 items-start">
-          <span>🔐</span><span>הצילומים נשמרים <b>במכשיר הזה בלבד</b> — לא עולים לדרייב, לא נשלחים ל-AI ולא נכללים בגיבויים.</span>
+          <span class="shrink-0">${UI.icon('lock', 'w-4 h-4')}</span><span>הצילומים נשמרים <b>במכשיר הזה בלבד</b> — לא עולים לדרייב, לא נשלחים ל-AI ולא נכללים בגיבויים.</span>
         </div>
-        <button id="vault-new-passport" class="tn-btn-primary w-full mb-4">🛂 העלאת דרכון — יצירת בן משפחה</button>
-        <div class="space-y-3">${rows || UI.emptyState('👨‍👩‍👧‍👦', 'אין עדיין בני משפחה', 'העלו דרכון בכפתור למעלה — בן המשפחה ייווצר אוטומטית מהפרטים שבו')}</div>`,
+        <button id="vault-new-passport" class="tn-btn-primary w-full mb-4">${UI.icon('id', 'w-4 h-4')} העלאת דרכון — יצירת בן משפחה</button>
+        <div class="space-y-3">${rows || UI.emptyState('users', 'אין עדיין בני משפחה', 'העלו דרכון בכפתור למעלה — בן המשפחה ייווצר אוטומטית מהפרטים שבו')}</div>`,
     });
 
     document.getElementById('vault-new-passport').addEventListener('click', newFromPassport);

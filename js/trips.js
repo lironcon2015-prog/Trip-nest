@@ -37,7 +37,7 @@ const Trips = (() => {
     };
 
     el.innerHTML = `
-      ${upcoming.length ? upcoming.map(card).join('') : UI.emptyState('🧳', 'אין טיולים מתוכננים', 'לחצו על + כדי לפתוח מחיצת חופשה חדשה')}
+      ${upcoming.length ? upcoming.map(card).join('') : UI.emptyState('luggage', 'אין טיולים מתוכננים', 'לחצו על + כדי לפתוח מחיצת חופשה חדשה')}
       ${past.length ? `<h3 class="text-sm font-bold text-slate-400 mt-6 mb-1">טיולים שהיו 💫</h3>${past.map(card).join('')}` : ''}`;
     el.querySelectorAll('.trip-card').forEach(b => b.addEventListener('click', () => App.navigate('trip', b.dataset.trip)));
   }
@@ -64,8 +64,8 @@ const Trips = (() => {
               <button type="button" id="tf-cover-remove" class="absolute top-2 left-2 bg-black/60 text-white w-7 h-7 rounded-full text-xs">✕</button>
             </div>
             <div class="flex gap-2">
-              <button type="button" id="tf-cover-btn" class="tn-btn-secondary flex-1 !text-xs">🖼️ ${cover ? 'החלפת תמונה' : 'בחירת תמונה'}</button>
-              <button type="button" id="tf-cover-camera" class="tn-btn-secondary flex-1 !text-xs">📷 צילום</button>
+              <button type="button" id="tf-cover-btn" class="tn-btn-secondary flex-1 !text-xs">${UI.icon('image', 'w-3.5 h-3.5')} ${cover ? 'החלפת תמונה' : 'בחירת תמונה'}</button>
+              <button type="button" id="tf-cover-camera" class="tn-btn-secondary flex-1 !text-xs">${UI.icon('camera', 'w-3.5 h-3.5')} צילום</button>
             </div>
             <input type="file" id="tf-cover" accept="image/*" class="hidden">
             <input type="file" id="tf-cover-cam" accept="image/*" capture="environment" class="hidden">
@@ -73,7 +73,7 @@ const Trips = (() => {
           <div><label class="tn-label">או אימוג׳י (כשאין תמונה)</label>
             <div class="flex flex-wrap gap-1.5">${EMOJIS.map(e => `<button type="button" class="tf-emoji text-xl p-1.5 rounded-xl ${trip?.coverEmoji === e ? 'bg-indigo-100' : 'bg-slate-50'}" data-e="${e}">${e}</button>`).join('')}</div>
           </div>
-          ${trip ? '<button id="tf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">🗑️ מחיקת הטיול</button>' : ''}
+          ${trip ? `<button id="tf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">${UI.icon('trash', 'w-4 h-4')} מחיקת הטיול</button>` : ''}
         </div>`,
       onConfirm: async () => {
         const name = document.getElementById('tf-name').value.trim();
@@ -105,7 +105,7 @@ const Trips = (() => {
       cover = await UI.fileToDataURL(file, 1000, 0.75);
       document.getElementById('tf-cover-img').src = cover;
       document.getElementById('tf-cover-preview').classList.remove('hidden');
-      document.getElementById('tf-cover-btn').textContent = '🖼️ החלפת תמונה';
+      document.getElementById('tf-cover-btn').innerHTML = `${UI.icon('image', 'w-3.5 h-3.5')} החלפת תמונה`;
     };
     document.getElementById('tf-cover-btn').addEventListener('click', () => document.getElementById('tf-cover').click());
     document.getElementById('tf-cover-camera').addEventListener('click', () => document.getElementById('tf-cover-cam').click());
@@ -114,7 +114,7 @@ const Trips = (() => {
     document.getElementById('tf-cover-remove').addEventListener('click', () => {
       cover = null;
       document.getElementById('tf-cover-preview').classList.add('hidden');
-      document.getElementById('tf-cover-btn').textContent = '🖼️ בחירת תמונה';
+      document.getElementById('tf-cover-btn').innerHTML = `${UI.icon('image', 'w-3.5 h-3.5')} בחירת תמונה`;
     });
     document.getElementById('tf-delete')?.addEventListener('click', () =>
       UI.confirm(`למחוק את "${trip.name}" על כל המסמכים והתוכנית שלו?`, async () => {
@@ -170,9 +170,9 @@ const Trips = (() => {
       hideConfirm: true,
       bodyHTML: `
         <div class="space-y-2">
-          <button id="ad-file" class="tn-menu-btn">📁 בחירת קבצים (PDF / תמונה)</button>
-          <button id="ad-camera" class="tn-menu-btn">📷 צילום מסמך</button>
-          <button id="ad-email" class="tn-menu-btn">✉️ ייבוא מהמייל</button>
+          <button id="ad-file" class="tn-menu-btn">${UI.icon('folder', 'w-4 h-4')} בחירת קבצים (PDF / תמונה)</button>
+          <button id="ad-camera" class="tn-menu-btn">${UI.icon('camera', 'w-4 h-4')} צילום מסמך</button>
+          <button id="ad-email" class="tn-menu-btn">${UI.icon('mail', 'w-4 h-4')} ייבוא מהמייל</button>
         </div>`,
     });
     document.getElementById('ad-file').addEventListener('click', () => { UI.closeModal(); Documents.addFlow(trip); });
@@ -184,7 +184,7 @@ const Trips = (() => {
   async function renderChecklist(trip, panel) {
     const lists = await DB.byTrip('checklists', trip.id);
     if (!lists.length) {
-      panel.innerHTML = UI.emptyState('📝', 'אין עדיין רשימות', 'צרו רשימת אריזה או משימות — או בקשו מהסוכן להכין אחת') +
+      panel.innerHTML = UI.emptyState('list', 'אין עדיין רשימות', 'צרו רשימת אריזה או משימות — או בקשו מהסוכן להכין אחת') +
         `<div class="text-center"><button id="cl-add-empty" class="bg-indigo-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-md active:scale-95">+ רשימה חדשה</button></div>`;
       document.getElementById('cl-add-empty').addEventListener('click', () => addChecklistModal(trip));
       return;
@@ -197,7 +197,7 @@ const Trips = (() => {
           <h4 class="font-bold text-slate-800">${UI.esc(l.title)}</h4>
           <div class="flex items-center gap-3">
             <span class="text-[11px] text-slate-400">${done}/${l.items.length}</span>
-            <button class="cl-del text-slate-300" data-id="${l.id}">🗑️</button>
+            <button class="cl-del text-slate-300" data-id="${l.id}">${UI.icon('trash', 'w-4 h-4')}</button>
           </div>
         </div>
         <div class="space-y-1.5">${l.items.map(i => `
@@ -241,7 +241,7 @@ const Trips = (() => {
       confirmLabel: 'שמירה',
       bodyHTML: `
         <div><label class="tn-label">שם הפריט</label><input id="cli-text" class="tn-input" value="${UI.esc(it.text)}"></div>
-        <button id="cli-delete" class="mt-4 w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">🗑️ הסרת הפריט מהרשימה</button>`,
+        <button id="cli-delete" class="mt-4 w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">${UI.icon('trash', 'w-4 h-4')} הסרת הפריט מהרשימה</button>`,
       onConfirm: async () => {
         const text = document.getElementById('cli-text').value.trim();
         if (!text) throw new Error('חסר שם לפריט');
@@ -298,7 +298,7 @@ const Trips = (() => {
           </span>
           <span class="font-bold text-slate-700 text-sm shrink-0" dir="ltr">${UI.fmtMoney(x.amount, x.currency || '₪')}</span>
         </button>`;
-      }).join('')}</div>` : UI.emptyState('💸', 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
+      }).join('')}</div>` : UI.emptyState('wallet', 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
     panel.querySelectorAll('.exp-item').forEach(b => b.addEventListener('click', async () =>
       expenseModal(trip, await DB.get('expenses', b.dataset.id))));
   }
@@ -319,7 +319,7 @@ const Trips = (() => {
             <div><label class="tn-label">תאריך</label><input id="xf-date" type="date" class="tn-input" value="${x?.date || UI.todayISO()}"></div>
             <div><label class="tn-label">מי שילם/ה</label><select id="xf-payer" class="tn-input"><option value="">—</option>${members.map(m => `<option value="${m.id}" ${x?.payerId === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}</option>`).join('')}</select></div>
           </div>
-          ${x ? '<button id="xf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">🗑️ מחיקה</button>' : ''}
+          ${x ? `<button id="xf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">${UI.icon('trash', 'w-4 h-4')} מחיקה</button>` : ''}
         </div>`,
       onConfirm: async () => {
         const title = document.getElementById('xf-title').value.trim();

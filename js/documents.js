@@ -14,7 +14,7 @@ const Documents = (() => {
 
     const grid = UI.DOC_CATEGORIES.filter(c => ['flight', 'stay', 'car', 'insurance'].includes(c.id) || counts[c.id]).map(c => `
       <button class="doc-cat bg-white rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center gap-1.5 active:scale-95 transition" data-cat="${c.id}">
-        <span class="text-2xl">${c.emoji}</span>
+        <span class="w-10 h-10 rounded-xl ${c.tint} flex items-center justify-center">${UI.icon(c.icon, 'w-5 h-5')}</span>
         <span class="text-sm font-semibold text-slate-700">${c.he}</span>
         <span class="text-[11px] text-slate-400">${counts[c.id] || 0} מסמכים</span>
       </button>`).join('');
@@ -23,7 +23,7 @@ const Documents = (() => {
       <div class="grid grid-cols-2 gap-3 mb-5">${grid}</div>
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-bold text-slate-800">כל המסמכים</h3>
-        <button id="doc-email-import" class="text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full">✉️ ייבוא מהמייל</button>
+        <button id="doc-email-import" class="text-xs bg-indigo-50 text-indigo-600 font-medium px-3 py-1.5 rounded-full">${UI.icon('mail', 'w-3.5 h-3.5')} ייבוא מהמייל</button>
       </div>
       <div id="doc-list" class="space-y-2.5"></div>`;
 
@@ -34,7 +34,7 @@ const Documents = (() => {
   }
 
   function renderList(trip, docs, el, filterLabel = null) {
-    if (!docs.length) { el.innerHTML = UI.emptyState('🗂️', filterLabel ? `אין מסמכים בקטגוריה ${filterLabel}` : 'אין עדיין מסמכים', 'הוסיפו עם כפתור ה-+ או ייבאו מהמייל'); return; }
+    if (!docs.length) { el.innerHTML = UI.emptyState('folder', filterLabel ? `אין מסמכים בקטגוריה ${filterLabel}` : 'אין עדיין מסמכים', 'הוסיפו עם כפתור ה-+ או ייבאו מהמייל'); return; }
     el.innerHTML = (filterLabel ? `<div class="text-xs text-slate-400 mb-1">מציג: ${filterLabel} · <button id="doc-clear-filter" class="text-indigo-600">הכל</button></div>` : '') +
       docs.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).map(d => {
         const c = UI.cat(d.category);
@@ -43,10 +43,10 @@ const Documents = (() => {
         return `
         <div class="bg-white rounded-2xl p-3.5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-3">
           <button class="doc-open flex items-center gap-3 flex-1 min-w-0 text-right" data-id="${d.id}">
-            <span class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl shrink-0">${c.emoji}</span>
+            <span class="w-11 h-11 rounded-xl ${c.tint} flex items-center justify-center shrink-0">${UI.icon(c.icon, 'w-[22px] h-[22px]')}</span>
             <span class="min-w-0">
               <span class="block text-sm font-semibold text-slate-800 truncate">${UI.esc(d.extracted?.title || d.fileName)}</span>
-              <span class="block text-[11px] text-slate-400 truncate">${c.he}${sub ? ' · ' + sub : ''} ${d.blob ? '' : '· ☁️'}</span>
+              <span class="block text-[11px] text-slate-400 truncate">${c.he}${sub ? ' · ' + sub : ''} ${d.blob ? '' : `· ${UI.icon('cloud', 'w-3 h-3')}`}</span>
             </span>
           </button>
           <span class="text-[10px] px-2 py-1 rounded-full ${srcCls} shrink-0">${srcTxt}</span>
@@ -66,11 +66,11 @@ const Documents = (() => {
       hideConfirm: true,
       bodyHTML: `
         <div class="space-y-2">
-          <button id="dm-view" class="tn-menu-btn">👁️ הצגת המסמך</button>
-          <button id="dm-extract" class="tn-menu-btn">✨ חילוץ נתונים עם AI</button>
+          <button id="dm-view" class="tn-menu-btn">${UI.icon('doc', 'w-4 h-4')} הצגת המסמך</button>
+          <button id="dm-extract" class="tn-menu-btn">${UI.icon('sparkles', 'w-4 h-4')} חילוץ נתונים עם AI</button>
           <div><label class="tn-label mt-2">קטגוריה</label>
-          <select id="dm-cat" class="tn-input">${UI.DOC_CATEGORIES.map(c => `<option value="${c.id}" ${(d.category || 'other') === c.id ? 'selected' : ''}>${c.emoji} ${c.he}</option>`).join('')}</select></div>
-          <button id="dm-delete" class="tn-menu-btn !bg-red-50 !text-red-600">🗑️ מחיקה</button>
+          <select id="dm-cat" class="tn-input">${UI.DOC_CATEGORIES.map(c => `<option value="${c.id}" ${(d.category || 'other') === c.id ? 'selected' : ''}>${c.he}</option>`).join('')}</select></div>
+          <button id="dm-delete" class="tn-menu-btn !bg-red-50 !text-red-600">${UI.icon('trash', 'w-4 h-4')} מחיקה</button>
         </div>`,
     });
     document.getElementById('dm-view').addEventListener('click', () => { UI.closeModal(); UI.viewer.open(d); });
@@ -79,9 +79,9 @@ const Documents = (() => {
       UI.toast('הקטגוריה עודכנה', 'success'); document.dispatchEvent(new CustomEvent('tn-data-changed'));
     });
     document.getElementById('dm-extract').addEventListener('click', async (e) => {
-      e.target.disabled = true; e.target.textContent = '✨ מחלץ…';
+      e.target.disabled = true; e.target.innerHTML = `${UI.icon('sparkles', 'w-4 h-4')} מחלץ…`;
       try { await extractDoc(trip, d); UI.closeModal(); }
-      catch (err) { UI.toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = '✨ חילוץ נתונים עם AI'; }
+      catch (err) { UI.toast(err.message, 'error'); e.target.disabled = false; e.target.innerHTML = `${UI.icon('sparkles', 'w-4 h-4')} חילוץ נתונים עם AI`; }
     });
     document.getElementById('dm-delete').addEventListener('click', () =>
       UI.confirm('למחוק את המסמך? (יימחק גם מהדרייב המשותף בסנכרון הבא של המכשירים)', async () => {
@@ -206,14 +206,14 @@ const Documents = (() => {
 
   function proposeEvents(trip, doc, proposed) {
     UI.openModal({
-      title: '✨ נמצאו אירועים למסלול',
+      title: 'נמצאו אירועים למסלול',
       confirmLabel: 'הוספה לתוכנית',
       bodyHTML: `
         <p class="text-sm text-slate-500 mb-3">מתוך "${UI.esc(doc.extracted?.title || doc.fileName)}":</p>
         <div class="space-y-2">${proposed.map((ev, i) => `
           <label class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
             <input type="checkbox" class="pe-check accent-indigo-600 w-4 h-4" data-i="${i}" checked>
-            <span class="text-lg">${UI.eventType(ev.type).emoji}</span>
+            <span class="w-8 h-8 rounded-lg ${UI.eventType(ev.type).tint} flex items-center justify-center shrink-0">${UI.icon(UI.eventType(ev.type).icon, 'w-4 h-4')}</span>
             <span class="text-sm"><b>${UI.esc(ev.title)}</b><br><span class="text-xs text-slate-400">${UI.fmtDate(ev.date)}${ev.time ? ' · ' + ev.time : ''}</span></span>
           </label>`).join('')}</div>`,
       onConfirm: async () => {
@@ -231,7 +231,7 @@ const Documents = (() => {
     const keywords = await G.gmail.keywords();
     const both = await G.hasPartnerBridge();
     UI.openModal({
-      title: '✉️ ייבוא מהמייל',
+      title: 'ייבוא מהמייל',
       confirmLabel: 'סריקה',
       bodyHTML: `
         <p class="text-xs text-slate-500 mb-3">${both
@@ -243,7 +243,7 @@ const Documents = (() => {
         </div>
         <label class="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <input id="ei-attach" type="checkbox" class="accent-indigo-600 w-4 h-4" checked>
-          רק מיילים עם קבצים מצורפים 📎
+          רק מיילים עם קבצים מצורפים
         </label>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="tn-label">מתאריך</label><input id="ei-after" type="date" class="tn-input" value="${defaultAfter(trip)}"></div>
@@ -272,17 +272,17 @@ const Documents = (() => {
 
   function showEmailResults(trip, results) {
     if (!results.length) {
-      UI.openModal({ title: '✉️ תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('📭', 'לא נמצאו מיילים תואמים', 'נסו להרחיב את טווח התאריכים או להוסיף מילות מפתח בהגדרות') });
+      UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'נסו להרחיב את טווח התאריכים או להוסיף מילות מפתח בהגדרות') });
       return;
     }
     UI.openModal({
-      title: `✉️ נמצאו ${results.length} מיילים`,
+      title: `נמצאו ${results.length} מיילים`,
       confirmLabel: 'ייבוא הנבחרים',
       bodyHTML: `<div class="space-y-2 max-h-[50vh] overflow-y-auto">${results.map((r, i) => `
         <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3">
           <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}">
           <span class="min-w-0 text-sm">
-            <b class="block truncate">${r.mailbox === 'partner' ? '<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle">התיבה של בן/בת הזוג</span>' : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">📎${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
+            <b class="block truncate">${r.mailbox === 'partner' ? '<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle">התיבה של בן/בת הזוג</span>' : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
             <span class="block text-xs text-slate-400 truncate">${UI.esc(r.from)}</span>
             <span class="block text-[11px] text-slate-400 mt-0.5">${UI.esc((r.snippet || '').slice(0, 90))}…</span>
           </span>

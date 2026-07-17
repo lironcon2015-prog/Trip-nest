@@ -119,7 +119,7 @@ const Members = (() => {
         <div class="mt-5">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-semibold text-slate-700">🛂 דרכון <span class="text-[10px] font-normal text-slate-400">(מקומי בלבד)</span></span>
-            <button id="profile-add-passport" class="text-xs text-indigo-600 font-medium">📷 צילום / העלאת דרכון</button>
+            <button id="profile-add-passport" class="text-xs text-indigo-600 font-medium">${UI.icon('camera', 'w-3.5 h-3.5')} צילום / העלאת דרכון</button>
           </div>
           ${passportHTML}
         </div>
@@ -163,7 +163,7 @@ const Members = (() => {
               <span id="mf-avatar-preview">${avatar
           ? `<img src="${avatar}" class="w-20 h-20 rounded-full object-cover ring-1 ring-slate-200">`
           : '<span class="w-20 h-20 rounded-full border-2 border-dashed border-slate-300 text-slate-400 flex items-center justify-center text-3xl">🙂</span>'}</span>
-              <span class="absolute -bottom-1 -left-1 bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm shadow">📷</span>
+              <span class="absolute -bottom-1 -left-1 bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm shadow">${UI.icon('camera', 'w-3.5 h-3.5')}</span>
             </button>
             <input type="file" id="mf-avatar" accept="image/*" class="hidden">
           </div>
