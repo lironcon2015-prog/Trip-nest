@@ -2,9 +2,9 @@
    Synced stores go to the shared Drive db.json; `vault` and `settings` never leave the device. */
 const DB = (() => {
   const NAME = 'TripNestDB';
-  const VERSION = 1;
+  const VERSION = 2;
   const SYNC_STORES = ['trips', 'documents', 'events', 'checklists', 'expenses', 'members'];
-  const SHARED_SETTINGS = ['keywords', 'negKeywords', 'agentPersona', 'agentHistory', 'agentNotes', 'foodProfile', 'foodFavorites'];
+  const SHARED_SETTINGS = ['keywords', 'negKeywords', 'agentPersona', 'agentHistory', 'agentNotes', 'agentTripSummaries', 'foodProfile', 'foodFavorites'];
   let _db = null;
 
   function open() {
@@ -26,6 +26,7 @@ const DB = (() => {
         mk('members', { keyPath: 'id' });
         mk('vault', { keyPath: 'id' }, ['memberId']);
         mk('settings', { keyPath: 'key' });
+        mk('archive', { keyPath: 'id' }, ['tripId']); // chat archive (v2), Drive-mirrored separately from db.json
       };
       req.onsuccess = () => { _db = req.result; resolve(_db); };
       req.onerror = () => reject(req.error);

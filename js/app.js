@@ -267,6 +267,7 @@ const App = (() => {
     document.querySelectorAll('[data-qa]').forEach(b =>
       b.addEventListener('click', () => quickAction(b.dataset.qa)));
 
+    Archive.init();
     Agent.init();
     navigate('home');
 

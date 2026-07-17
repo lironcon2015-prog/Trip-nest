@@ -15,6 +15,36 @@ const Agent = (() => {
     G.Sync.queue();
   }
 
+  // Gemini rejects unknown fields — strip the local metadata (_ts, _trip) before sending
+  const wire = () => history.map(({ role, parts }) => ({ role, parts }));
+
+  // the trip a conversation "belongs" to right now: the live trip, else the
+  // nearest upcoming one — used to partition archived turns per trip
+  async function activeTripId() {
+    const today = UI.todayISO();
+    const trips = (await DB.all('trips')).filter(t => !t.endDate || t.endDate >= today);
+    trips.sort((a, b) => String(a.startDate || '9999') < String(b.startDate || '9999') ? -1 : 1);
+    const live = trips.find(t => t.startDate && t.startDate <= today);
+    return (live || trips[0])?.id || null;
+  }
+
+  function turnText(turn) {
+    const parts = turn.parts || [];
+    const text = parts.filter(p => p.text).map(p => p.text).join('');
+    if (text) return text;
+    const calls = parts.filter(p => p.functionCall).map(p => p.functionCall.name);
+    return calls.length ? '[פעולות: ' + calls.join(', ') + ']' : '';
+  }
+
+  // turns dropped from the live window land in the archive instead of vanishing
+  async function archiveTurns(turns) {
+    try {
+      await Archive.add(turns
+        .map(t => ({ ts: t._ts || Date.now(), tripId: t._trip || null, role: t.role, text: turnText(t) }))
+        .filter(r => r.text));
+    } catch (e) { console.warn('archiving trimmed turns failed', e); }
+  }
+
   const CHIPS = [
     'תכנן ארוחות לטיול הקרוב לפי פרופיל האוכל שלנו',
     'בנה תוכנית טיול לטיול הקרוב',
@@ -127,14 +157,26 @@ const Agent = (() => {
     },
     {
       name: 'remember_note',
-      description: 'שמירת עובדה לזיכרון ארוך-טווח (העדפות, החלטות, מידע שכדאי לזכור לטיולים הבאים). השתמש כשהמשפחה מספרת משהו ששווה לזכור.',
+      description: 'שמירת עובדה לזיכרון ארוך-טווח. השתמש כשהמשפחה מספרת משהו ששווה לזכור. עם tripId — זיכרון של הטיול הזה בלבד; בלי tripId — זיכרון משפחה: העדפה או עובדת רוחב שנכונה לכל הטיולים.',
       parameters: {
         type: 'OBJECT',
         properties: {
           note: { type: 'STRING', description: 'העובדה לזכירה, משפט קצר בעברית' },
-          tripId: { type: 'STRING', description: 'אם קשור לטיול ספציפי, לא חובה' },
+          tripId: { type: 'STRING', description: 'רק אם העובדה נוגעת לטיול ספציפי; השמט להעדפות כלליות' },
         },
         required: ['note'],
+      },
+    },
+    {
+      name: 'search_archive',
+      description: 'חיפוש בארכיון המלא של שיחות העבר (מה שכבר לא מופיע בהיסטוריה הנוכחית). השתמש כשנשאלת על דיון, החלטה או פרט ישנים שאינם בהקשר — לפני שאתה עונה שאינך זוכר.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          query: { type: 'STRING', description: 'מילות חיפוש (מופרדות ברווח, כולן חייבות להופיע)' },
+          tripId: { type: 'STRING', description: 'צמצום לארכיון של טיול מסוים, לא חובה' },
+        },
+        required: ['query'],
       },
     },
     {
@@ -143,6 +185,8 @@ const Agent = (() => {
       parameters: { type: 'OBJECT', properties: { noteId: { type: 'STRING' } }, required: ['noteId'] },
     },
   ];
+
+  const AUTO_TOOLS = new Set(['search_archive']); // read-only, no approval needed
 
   async function execTool(name, args) {
     switch (name) {
@@ -208,6 +252,18 @@ const Agent = (() => {
         await DB.touchShared();
         return { ok: true, noteId: n.id };
       }
+      case 'search_archive': {
+        await Archive.pull(args.tripId || null); // best-effort refresh from Drive
+        const hits = await Archive.search(args.query, args.tripId ? { tripId: args.tripId, limit: 15 } : { limit: 15 });
+        return {
+          ok: true,
+          results: hits.map(h => ({
+            date: new Date(h.ts).toISOString().slice(0, 10),
+            role: h.role === 'user' ? 'family' : 'agent',
+            text: String(h.text).slice(0, 500),
+          })),
+        };
+      }
       case 'forget_note': {
         const notes = (await DB.settings.get('agentNotes')) || [];
         const left = notes.filter(n => n.id !== args.noteId);
@@ -231,15 +287,81 @@ const Agent = (() => {
       case 'set_document_category': return `🏷️ שינוי קטגוריית מסמך ל"${UI.cat(args.category).he}"`;
       case 'add_expense': return `💰 הוספת הוצאה: <b>${UI.esc(args.title)}</b> · ${UI.fmtMoney(args.amount, UI.normCur(args.currency))}`;
       case 'delete_expense': return '🗑️ מחיקת הוצאה מהתקציב';
-      case 'remember_note': return `🧠 לזכור: <b>${UI.esc(args.note)}</b>`;
+      case 'remember_note': return `🧠 לזכור${args.tripId ? ' (בטיול)' : ' (זיכרון משפחה)'}: <b>${UI.esc(args.note)}</b>`;
+      case 'search_archive': return `🗄️ חיפוש בארכיון: "<b>${UI.esc(args.query || '')}</b>"`;
       case 'forget_note': return '🧠 מחיקת פתק מהזיכרון';
       default: return UI.esc(name);
+    }
+  }
+
+  /* --- trip summaries (long-term trip memory, shared setting) --- */
+  const SUMMARIES_KEY = 'agentTripSummaries';
+  async function summaries() { return (await DB.settings.get(SUMMARIES_KEY)) || {}; }
+
+  // condense a trip's conversations + notes into a lasting summary, and promote
+  // cross-trip insights into family memory. text:null marks "nothing to summarize"
+  // so autoSummarize won't retry a chat-less trip forever.
+  async function summarizeTrip(tripId) {
+    const trip = await DB.get('trips', tripId);
+    if (!trip) throw new Error('הטיול לא נמצא');
+    await Archive.pull(tripId);
+    if (!historyLoaded) await loadHistory();
+    const turns = (await Archive.forTrip(tripId)).map(r => ({ role: r.role, text: r.text }));
+    for (const t of history) {
+      if (t._trip === tripId) { const txt = turnText(t); if (txt) turns.push({ role: t.role, text: txt }); }
+    }
+    const notes = ((await DB.settings.get('agentNotes')) || []).filter(n => n.tripId === tripId);
+    const s = await summaries();
+    if (!turns.length && !notes.length) {
+      s[tripId] = { text: null, updatedAt: Date.now() };
+      await DB.settings.set(SUMMARIES_KEY, s);
+      await DB.touchShared();
+      return null;
+    }
+    const convo = turns.map(t => `${t.role === 'user' ? 'משפחה' : 'סוכן'}: ${t.text}`).join('\n').slice(-20000);
+    const out = await Gemini.json(`אתה מסכם שיחות תכנון של טיול משפחתי לצורך זיכרון ארוך-טווח של סוכן AI.
+הטיול: ${trip.name} · ${trip.destination || ''} · ${trip.startDate || '?'}–${trip.endDate || '?'}
+פתקי הזיכרון של הטיול:
+${notes.map(n => '- ' + n.note).join('\n') || '(אין)'}
+השיחות:
+${convo || '(אין)'}
+החזר JSON בלבד:
+{"summary":"סיכום בעברית, עד 120 מילים: החלטות שהתקבלו, מה עבד ומה לא, לקחים לטיול הזה",
+ "familyNotes":["עד 3 תובנות רוחב שנכונות גם לטיולים הבאים (העדפות קבועות של המשפחה), משפט קצר כל אחת; החזר [] אם אין"]}`);
+    if (!out || !out.summary) throw new Error('הסיכום נכשל — נסו שוב');
+    s[tripId] = { text: String(out.summary), updatedAt: Date.now() };
+    await DB.settings.set(SUMMARIES_KEY, s);
+    const all = (await DB.settings.get('agentNotes')) || [];
+    for (const note of (Array.isArray(out.familyNotes) ? out.familyNotes : []).slice(0, 3)) {
+      const txt = String(note || '').trim();
+      if (txt && !all.some(n => n.note === txt)) {
+        all.push({ id: DB.uid(), note: txt, tripId: null, source: 'trip-summary:' + tripId, createdAt: Date.now() });
+      }
+    }
+    await DB.settings.set('agentNotes', all);
+    await DB.touchShared();
+    G.Sync.queue();
+    return s[tripId];
+  }
+
+  // quietly summarize trips that ended without a summary (once per app load)
+  let _autoRan = false;
+  async function autoSummarize() {
+    if (_autoRan || !(await Gemini.hasKey())) return;
+    _autoRan = true;
+    const today = UI.todayISO();
+    const s = await summaries();
+    for (const t of await DB.all('trips')) {
+      if (!t.endDate || t.endDate >= today || s[t.id]) continue;
+      try { await summarizeTrip(t.id); } catch (e) { console.warn('auto trip summary failed', e); break; }
     }
   }
 
   /* --- context --- */
   async function buildContext() {
     const [trips, members] = [await DB.all('trips'), await DB.all('members')];
+    const notes = (await DB.settings.get('agentNotes')) || [];
+    const sums = await summaries();
     const ctx = {
       today: UI.todayISO(),
       family: members.map(m => ({ id: m.id, name: m.nameHe, nameEn: m.nameEn, age: UI.age(m.birthDate) })),
@@ -254,10 +376,15 @@ const Agent = (() => {
         travelers: (t.memberIds || []).map(id => members.find(m => m.id === id)?.nameHe).filter(Boolean),
       };
       const past = t.endDate && t.endDate < ctx.today;
-      if (past) { ctx.trips.push({ ...base, past: true }); continue; }
+      if (past) {
+        // past trips: one line + the lasting memory summary, nothing more
+        ctx.trips.push({ ...base, past: true, ...(sums[t.id]?.text ? { memory: sums[t.id].text } : {}) });
+        continue;
+      }
       const expenses = await DB.byTrip('expenses', t.id);
       ctx.trips.push({
         ...base,
+        notes: notes.filter(n => n.tripId === t.id).map(n => ({ id: n.id, note: n.note })),
         documents: (await DB.byTrip('documents', t.id)).map(d => ({
           id: d.id, name: d.fileName, category: d.category, extracted: d.extracted || null,
         })),
@@ -280,13 +407,19 @@ const Agent = (() => {
     return ctx;
   }
 
+  // fixed section, outside the user-editable persona, so memory rules survive persona edits
+  const MEMORY_RULES = `\n\n--- מבנה הזיכרון שלך ---
+שלוש שכבות: (1) זיכרון משפחה — העדפות ועובדות רוחב, מופיע כאן תמיד; (2) זיכרון טיול — פתקים בשדה notes של כל טיול נוכחי/עתידי, וסיכום קבוע בשדה memory של טיולי עבר; (3) ארכיון שיחות מלא — לא בהקשר, נגיש דרך הכלי search_archive.
+שמירה: remember_note עם tripId לעובדה של טיול ספציפי, בלי tripId לזיכרון משפחה. מחיקה: forget_note.
+כשנשאל על דיון או החלטה ישנים שאינם בהקשר — חפש עם search_archive לפני שאתה עונה שאינך זוכר.`;
+
   async function systemPrompt() {
     const persona = (await DB.settings.get('agentPersona')) || DEFAULT_PERSONA;
-    const notes = (await DB.settings.get('agentNotes')) || [];
-    const memory = notes.length
-      ? `\n\n--- הזיכרון שלך (עובדות ששמרת עם remember_note; מחיקה עם forget_note) ---\n${notes.map(n => `[${n.id}] ${n.note}`).join('\n')}`
+    const family = ((await DB.settings.get('agentNotes')) || []).filter(n => !n.tripId);
+    const memory = family.length
+      ? `\n\n--- זיכרון המשפחה (עובדות רוחב ששמרת; פתקי טיול נמצאים בתוך כל טיול) ---\n${family.map(n => `[${n.id}] ${n.note}`).join('\n')}`
       : '';
-    return `${persona}${memory}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
+    return `${persona}${MEMORY_RULES}${memory}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
   }
 
   /* --- UI --- */
@@ -308,6 +441,7 @@ const Agent = (() => {
     if (!log.children.length) {
       addBubble('model', 'היי! אני העוזר של Navigo 🛫 אפשר לשאול אותי על הטיולים, המסמכים והתוכניות — או ללחוץ על אחת הפעולות למעלה.');
     }
+    autoSummarize(); // background: condense trips that just became "past"
   }
 
   function addBubble(role, html) {
@@ -359,18 +493,20 @@ const Agent = (() => {
     }
     busy = true;
     if (!historyLoaded) await loadHistory();
+    const tripTag = await activeTripId(); // partitions this exchange's turns in the archive
+    const meta = () => ({ _ts: Date.now(), _trip: tripTag });
     document.getElementById('agent-input').value = '';
     addBubble('user', UI.esc(text));
-    history.push({ role: 'user', parts: [{ text }] });
+    history.push({ role: 'user', parts: [{ text }], ...meta() });
     let bubble = addBubble('model', '<span class="text-slate-400">חושב…</span>');
 
     try {
       const system = await systemPrompt();
       for (let round = 0; round < 6; round++) {
-        const data = await Gemini.chat(history, { system, tools: TOOLS });
+        const data = await Gemini.chat(wire(), { system, tools: TOOLS });
         const content = data.candidates?.[0]?.content;
         if (!content) { bubble.innerHTML = 'לא התקבלה תשובה 🤔'; break; }
-        history.push(content);
+        history.push({ ...content, ...meta() });
 
         const calls = (content.parts || []).filter(p => p.functionCall).map(p => p.functionCall);
         const modelText = Gemini.textOf(data);
@@ -378,28 +514,37 @@ const Agent = (() => {
         else bubble.remove();
         if (!calls.length) break;
 
-        const approved = await approvalCard(calls.map(c => ({ name: c.name, args: c.args || {} })));
+        // read-only tools run without an approval card — just a muted status line
+        const autoOnly = calls.every(c => AUTO_TOOLS.has(c.name));
+        let approved = true;
+        if (autoOnly) {
+          addBubble('model', `<span class="text-slate-400 text-xs">${calls.map(c => describeCall(c.name, c.args || {})).join('<br>')}</span>`);
+        } else {
+          approved = await approvalCard(calls.map(c => ({ name: c.name, args: c.args || {} })));
+        }
         const responses = [];
         for (const c of calls) {
           const result = approved ? await execTool(c.name, c.args || {}) : { ok: false, error: 'user rejected the action' };
           responses.push({ functionResponse: { name: c.name, response: { result } } });
         }
-        if (approved) {
+        if (approved && !autoOnly) {
           G.Sync.queue();
           document.dispatchEvent(new CustomEvent('tn-data-changed'));
         }
-        history.push({ role: 'user', parts: responses });
+        history.push({ role: 'user', parts: responses, ...meta() });
         bubble = addBubble('model', '<span class="text-slate-400">ממשיך…</span>');
       }
     } catch (e) {
       console.error(e);
       bubble.innerHTML = `<span class="text-red-500">שגיאה: ${UI.esc(e.message)}</span>`;
     } finally {
-      // keep history bounded, cutting only at a plain-text user turn so
-      // functionCall/functionResponse pairs are never split
+      // keep the live window bounded, cutting only at a plain-text user turn so
+      // functionCall/functionResponse pairs are never split; dropped turns go to
+      // the archive instead of vanishing
       if (history.length > 40) {
         let cut = history.length - 30;
         while (cut < history.length && !(history[cut].role === 'user' && history[cut].parts?.some(p => p.text))) cut++;
+        await archiveTurns(history.slice(0, cut));
         history = history.slice(cut);
       }
       await saveHistory();
@@ -413,6 +558,6 @@ const Agent = (() => {
     form.addEventListener('submit', (e) => { e.preventDefault(); send(document.getElementById('agent-input').value); });
   }
 
-  return { init, render, send, DEFAULT_PERSONA, CHIPS };
+  return { init, render, send, summarizeTrip, summaries, DEFAULT_PERSONA, CHIPS };
 })();
 window.Agent = Agent;
