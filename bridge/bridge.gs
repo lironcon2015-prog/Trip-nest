@@ -1,4 +1,4 @@
-/* TripNest — Google Apps Script bridge  (v1.2.0)
+/* TripNest — Google Apps Script bridge  (v1.3.0)
    ------------------------------------------------
    הגשר רץ בחשבון Google שלכם ומחליף את OAuth/Cloud Console:
    האפליקציה שולחת אליו בקשות, והוא ניגש ל-Drive ול-Gmail בשמכם.
