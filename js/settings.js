@@ -129,10 +129,10 @@ const Settings = (() => {
         <div class="space-y-2">
           <button id="st-vault-pin" class="tn-menu-btn">${UI.icon('key', 'w-4 h-4')} קוד גישה לכספת הדרכונים</button>
           <button id="st-export" class="tn-menu-btn">${UI.icon('download', 'w-4 h-4')} ייצוא גיבוי מלא (JSON)</button>
-          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} גיבוי מלא לבן/בת הזוג (נתונים + חיבורים)</button>
+          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} קובץ חיבור לבן/בת הזוג (קטן — הנתונים יימשכו מהדרייב)</button>
           <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי</button>
           <input type="file" id="st-import-file" accept="application/json" class="hidden">
-          <p class="text-[11px] text-slate-400">שני הגיבויים כוללים את כל הנתונים והחיבורים. "גיבוי מלא" משחזר את <b>המכשיר הזה</b>; "לבן/בת הזוג" הוא קובץ אחד שמרימים במכשיר שלו/שלה דרך "שחזור מגיבוי" — החיבורים כבר מוחלפים לתפקיד הנכון (הגשר שלו/שלה כראשי). צילומי הדרכון לא נכללים — הם לא עוזבים את המכשיר.</p>
+          <p class="text-[11px] text-slate-400">"גיבוי מלא" כולל את כל הנתונים ומשחזר את <b>המכשיר הזה</b>. "קובץ חיבור" הוא קובץ קטן לבן/בת הזוג: רק החיבורים והמפתחות, בתפקיד הנכון (הגשר שלו/שלה כראשי) — מרימים אותו במכשיר שלו/שלה דרך "שחזור מגיבוי", וכל הנתונים והמסמכים נמשכים אוטומטית מתיקיית הדרייב המשותפת. צילומי הדרכון לא נכללים באף גיבוי — הם לא עוזבים את המכשיר.</p>
         </div>
       </section>
 
@@ -344,9 +344,10 @@ const Settings = (() => {
       UI.toast('הגיבוי ירד ✓', 'success');
     });
 
-    // one complete file for the partner's device: the full data backup PLUS their
-    // connections, roles swapped (their bridge becomes "mine", ours becomes "partner").
-    // This device's own local secrets (vault PIN etc.) are replaced, not exported.
+    // a small connections-only profile for the partner's device: bridges with roles
+    // swapped (their bridge becomes "mine", ours becomes "partner"), shared folder and
+    // Gemini key. No data payload — everything syncs down from the shared Drive folder,
+    // so the file stays WhatsApp-sized. This device's local secrets (vault PIN) stay out.
     document.getElementById('st-export-partner').addEventListener('click', async (e) => UI.busy(e.currentTarget, async () => {
       const [bu, bt, pu, pt, fid, fname, gk, gm] = await Promise.all([
         DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
@@ -365,19 +366,22 @@ const Settings = (() => {
         if (!pEmail) { pEmail = await G.accountEmail({ account: 'partner' }).catch(() => null); if (pEmail) await DB.settings.set('partnerEmail', pEmail); }
         access = await G.setup.ensurePartnerAccess({ folderId: fid, partnerEmail: pEmail });
       }
-      const backup = await DB.exportBackup();
-      backup.type = 'partner-backup';
-      backup.settingsLocal = {
-        bridgeUrl: pu, bridgeToken: pt,
-        partnerBridgeUrl: bu, partnerBridgeToken: bt, partnerEmail: email,
-        driveFolderId: fid, driveFolderName: fname,
-        geminiKey: gk, geminiModels: gm,
+      // push the latest local data to Drive first, so the partner's first sync sees everything
+      await G.Sync.run({ silent: true }).catch(() => {});
+      const profile = {
+        app: 'TripNest', version: 2, type: 'partner-profile', exported: new Date().toISOString(),
+        settingsLocal: {
+          bridgeUrl: pu, bridgeToken: pt,
+          partnerBridgeUrl: bu, partnerBridgeToken: bt, partnerEmail: email,
+          driveFolderId: fid, driveFolderName: fname,
+          geminiKey: gk, geminiModels: gm,
+        },
       };
-      download(backup, `navigo-partner-backup-${UI.todayISO()}.json`);
+      download(profile, `navigo-partner-setup-${UI.todayISO()}.json`);
       if (access === 'manual')
-        UI.toast('הגיבוי ירד, אבל לא הצלחתי לוודא גישה לתיקייה בדרייב — שתפו אותה עם החשבון של בן/בת הזוג (או פרסו גשר מעודכן ונסו שוב)', 'warning');
+        UI.toast('הקובץ ירד, אבל לא הצלחתי לוודא גישה לתיקייה בדרייב — שתפו אותה עם החשבון של בן/בת הזוג (או פרסו גשר מעודכן ונסו שוב)', 'warning');
       else
-        UI.toast(`הגיבוי לבן/בת הזוג ירד ✓${access === 'granted' ? ' הגישה לתיקייה בדרייב הוענקה עכשיו.' : ''} במכשיר שלו/שלה: הגדרות ← שחזור מגיבוי`, 'success');
+        UI.toast(`קובץ החיבור ירד ✓${access === 'granted' ? ' הגישה לתיקייה בדרייב הוענקה עכשיו.' : ''} במכשיר שלו/שלה: הגדרות ← שחזור מגיבוי — והכול יימשך מהדרייב`, 'success');
     }));
 
     document.getElementById('st-import').addEventListener('click', () => document.getElementById('st-import-file').click());
