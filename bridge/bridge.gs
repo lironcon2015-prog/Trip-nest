@@ -16,7 +16,7 @@
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.2.2';
+const BRIDGE_VERSION = '1.3.0';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -53,6 +53,8 @@ function _dispatch(req) {
     case 'shareFolder':     return shareFolder(req);
     case 'dbGet':           return dbGet(req);
     case 'dbPut':           return dbPut(req);
+    case 'fileGet':         return fileGet(req);
+    case 'filePut':         return filePut(req);
     case 'upload':          return upload(req);
     case 'download':        return download(req);
     case 'gmailSearch':     return gmailSearch(req);
@@ -136,6 +138,33 @@ function dbPut(req) {
   if (f) f.setContent(content);
   else DriveApp.getFolderById(req.folderId)
     .createFile(DB_FILE, content, 'application/json');
+  return {};
+}
+
+/* ---------- named JSON files (chat archive etc.) ----------
+   fileGet/filePut work on a caller-chosen file name in the root folder, with
+   overwrite semantics (unlike 'upload', which always creates a new file). */
+
+function _namedFile(folderId, name) {
+  const it = DriveApp.getFolderById(folderId).getFilesByName(name);
+  return it.hasNext() ? it.next() : null;
+}
+
+function fileGet(req) {
+  if (!req.name) throw new Error('fileGet: missing name');
+  const f = _namedFile(req.folderId, req.name);
+  if (!f) return { content: null };
+  try { return { content: JSON.parse(f.getBlob().getDataAsString('UTF-8')) }; }
+  catch (e) { return { content: null }; }
+}
+
+function filePut(req) {
+  if (!req.name) throw new Error('filePut: missing name');
+  if (req.name === DB_FILE) throw new Error('filePut: use dbPut');
+  const f = _namedFile(req.folderId, req.name);
+  const content = JSON.stringify(req.content);
+  if (f) f.setContent(content);
+  else DriveApp.getFolderById(req.folderId).createFile(req.name, content, 'application/json');
   return {};
 }
 

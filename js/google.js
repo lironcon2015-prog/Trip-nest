@@ -125,6 +125,20 @@ const G = (() => {
     },
   };
 
+  /* --- named JSON files in the shared folder (chat archive) ---
+     requires bridge >= 1.3.0; an older bridge throws 'unknown action: fileGet' —
+     callers must catch and degrade gracefully. */
+  const files = {
+    async get(name) {
+      const folderId = await DB.settings.get('driveFolderId');
+      return (await call('fileGet', { folderId, name })).content;
+    },
+    async put(name, content) {
+      const folderId = await DB.settings.get('driveFolderId');
+      await call('filePut', { folderId, name, content });
+    },
+  };
+
   /* --- Sync --- */
   let _syncing = false;
   const Sync = {
@@ -242,6 +256,6 @@ const G = (() => {
     },
   };
 
-  return { isConfigured, hasPartnerBridge, ping, accountEmail, call, setup, drive, Sync, gmail, DEFAULT_KEYWORDS };
+  return { isConfigured, hasPartnerBridge, ping, accountEmail, call, setup, drive, files, Sync, gmail, DEFAULT_KEYWORDS };
 })();
 window.G = G;

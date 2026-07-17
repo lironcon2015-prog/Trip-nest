@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.31.0';
+const CACHE_VERSION = '1.32.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [

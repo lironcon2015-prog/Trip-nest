@@ -83,6 +83,18 @@ function bridge(req, S = bridgeState, token = TOKEN) {
         f.data = b64(JSON.stringify(req.db));
         return { ok: true };
       }
+      case 'fileGet': {
+        const f = Object.values(S.files).find(f => f.parent === req.folderId && f.name === req.name);
+        return { ok: true, content: f ? JSON.parse(Buffer.from(f.data, 'base64').toString('utf-8')) : null };
+      }
+      case 'filePut': {
+        if (!req.name) return { ok: false, error: 'filePut: missing name' };
+        if (req.name === 'tripnest-db.json') return { ok: false, error: 'filePut: use dbPut' };
+        let f = Object.values(S.files).find(f => f.parent === req.folderId && f.name === req.name);
+        if (!f) { const id = nid('file-'); f = S.files[id] = { name: req.name, mimeType: 'application/json', parent: req.folderId }; }
+        f.data = b64(JSON.stringify(req.content));
+        return { ok: true };
+      }
       case 'upload': {
         const marker = 'tripnest-trip:' + req.tripId;
         let [tfId] = Object.entries(S.folders).find(([, f]) => f.parent === req.folderId && f.description === marker) || [];
@@ -381,6 +393,22 @@ await test('דרכון לעולם לא עולה לדרייב בסנכרון', as
   const after = await DB.get('documents', doc.id);
   assert(!after.driveFileId, 'passport blob must not be uploaded');
   assert(!Object.values(bridgeState.files).some(f => f.name === 'passport-liron.jpg'), 'passport file found in Drive');
+});
+
+await test('קבצי JSON בשם: put→get, קובץ חסר → null, דריסה בלי כפילויות', async () => {
+  assert((await G.files.get('chat-archive-general.json')) === null, 'missing file must return null');
+  await G.files.put('chat-archive-general.json', { version: 1, records: [{ id: 'a1', text: 'שלום' }] });
+  await G.files.put('chat-archive-general.json', { version: 1, records: [{ id: 'a1', text: 'שלום' }, { id: 'a2', text: 'עוד' }] });
+  const out = await G.files.get('chat-archive-general.json');
+  assert(out && out.records.length === 2 && out.records[1].id === 'a2', 'content wrong after overwrite');
+  const copies = Object.values(bridgeState.files).filter(f => f.name === 'chat-archive-general.json');
+  assert(copies.length === 1, 'filePut must overwrite in place, not duplicate');
+});
+
+await test('filePut על tripnest-db.json נחסם', async () => {
+  let err = null;
+  try { await G.files.put('tripnest-db.json', {}); } catch (e) { err = e; }
+  assert(err && /dbPut/.test(err.message), 'expected rejection, got: ' + err);
 });
 
 /* ---------- Gemini cascade ---------- */
