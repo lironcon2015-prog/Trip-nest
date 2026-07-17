@@ -23,7 +23,7 @@
 ## Architecture notes
 
 - **Vanilla JS, ללא build**: מודולים גלובליים (IIFE → `window.X`) שנטענים לפי הסדר ב-`index.html`. אין imports; סדר הטעינה הוא התלות.
-- **גשר Apps Script** (`bridge/bridge.gs`): כל הגישה ל-Drive/Gmail עוברת דרך web-app שרץ בחשבון Google של המשתמש, מוגן בטוקן. `js/google.js` הוא הלקוח — POST כ-simple request (בלי headers, כדי לא להפעיל CORS preflight). שינוי בגשר מחייב פריסה מחדש ידנית אצל המשתמש — לשבור תאימות רק כשאין ברירה.
+- **גשר Apps Script** (`bridge/bridge.gs`): כל הגישה ל-Drive/Gmail עוברת דרך web-app שרץ בחשבון Google של המשתמש, מוגן בטוקן. `js/google.js` הוא הלקוח — POST כ-simple request (בלי headers, כדי לא להפעיל CORS preflight). שינוי בגשר מחייב פריסה מחדש ידנית אצל המשתמש — לשבור תאימות רק כשאין ברירה. **כששונה `bridge.gs` (או כל קובץ שהמשתמש מדביק ידנית מחוץ לאפליקציה) — להדביק את הקובץ המלא גם בצ'אט להעתקה, לא רק בגיט.**
 - **שתי תיבות Gmail**: גשר "שלי" + גשר של בן/בת הזוג (`partnerBridgeUrl/Token`). מזהי הודעות מהתיבה השנייה נושאים קידומת `p:` והניתוב נעשה ב-`G.gmail._route`.
 - **סנכרון**: `tripnest-db.json` בתיקיית דרייב משותפת, merge לפי `updatedAt` עם tombstones (`deleted:true`). blobs של מסמכים נשמרים כקבצים בתתי-תיקיות לפי טיול, לא בתוך ה-db.json.
 - **Gemini — מפל מודלים**: `Gemini.call` מנסה מודלים לפי הסדר (`DEFAULT_MODELS`, דריסה ב-`DB.settings.geminiModels`); fallback רק על 429/503/RESOURCE_EXHAUSTED/UNAVAILABLE, כל שגיאה אחרת נזרקת מיד. מפתח בכותרת `x-goog-api-key`, לעולם לא ב-query string. אבחון: `Gemini.testModels` (כפתור בהגדרות).
