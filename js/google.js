@@ -91,6 +91,21 @@ const G = (() => {
       await DB.settings.set('driveFolderName', out.folderName);
       return out;
     },
+    // the partner-backup file carries the folder id, but the ability to open the
+    // folder lives in Drive sharing. Verify through THEIR bridge that the folder is
+    // visible; if not, grant edit from this side. → 'ok' | 'granted' | 'manual'
+    // ('manual' = old bridge without shareFolder, or no partner email known).
+    async ensurePartnerAccess({ folderId, partnerEmail }) {
+      try {
+        const out = await call('findShared', {}, { account: 'partner' });
+        if (out.folderId === folderId) return 'ok';
+      } catch { }
+      if (!partnerEmail) return 'manual';
+      try {
+        await call('shareFolder', { folderId, email: partnerEmail });
+        return 'granted';
+      } catch { return 'manual'; }
+    },
   };
 
   /* --- drive (מה שהמודולים האחרים צריכים) --- */

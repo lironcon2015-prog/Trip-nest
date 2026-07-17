@@ -59,6 +59,14 @@ function bridge(req, S = bridgeState, token = TOKEN) {
         S.folders[id] = { name: req.name || 'TripNest', description: 'tripnest-root', parent: null, shares: req.partnerEmail ? [req.partnerEmail] : [] };
         return { ok: true, folderId: id, folderName: S.folders[id].name };
       }
+      case 'shareFolder': {
+        const f = S.folders[req.folderId];
+        if (!f || !req.email) return { ok: false, error: 'folder not found' };
+        f.shares.push(req.email);
+        // simulate Drive sharing: the folder becomes visible to the other account
+        (S === bridgeState ? partnerState : bridgeState).folders[req.folderId] = f;
+        return { ok: true, shared: true };
+      }
       case 'findShared': {
         const hit = Object.entries(S.folders).find(([, f]) =>
           f.description === 'tripnest-root' && (!req.name || f.name === req.name));
@@ -305,6 +313,16 @@ await test('סריקה כפולה: שתי התיבות ממוזגות וממוי
   assert(results[0].subject.includes('סנטוריני') && results[0].mailbox === 'partner', 'newest (partner) message must be first');
   assert(results[0].id.startsWith('p:'), 'partner message id must carry p: prefix');
   assert(results.filter(r => r.mailbox === 'me').length === 2, 'own messages missing');
+});
+
+await test('ensurePartnerAccess: מענק גישה דרך הגשר שלי ואימות דרך הגשר השני', async () => {
+  const folderId = await DB.settings.get('driveFolderId');
+  const first = await G.setup.ensurePartnerAccess({ folderId, partnerEmail: 'partner@example.com' });
+  assert(first === 'granted', 'expected granted, got: ' + first);
+  const second = await G.setup.ensurePartnerAccess({ folderId, partnerEmail: 'partner@example.com' });
+  assert(second === 'ok', 'expected ok once shared, got: ' + second);
+  const manual = await G.setup.ensurePartnerAccess({ folderId: 'folder-unknown', partnerEmail: null });
+  assert(manual === 'manual', 'expected manual without email, got: ' + manual);
 });
 
 await test('ייבוא מהתיבה של בן/בת הזוג מנותב לגשר הנכון', async () => {

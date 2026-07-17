@@ -329,8 +329,15 @@ const Settings = (() => {
       ]);
       if (!pu || !pt) { UI.toast('קודם הגדירו את הגשר של בן/בת הזוג — הוא יהיה הגשר הראשי אצלו/אצלה', 'warning'); return; }
       let email = await DB.settings.get('myEmail');
-      try { email = (await G.ping()).email || email; } catch { }
-      if (email) await DB.settings.set('myEmail', email);
+      if (!email) { email = await G.accountEmail().catch(() => null); if (email) await DB.settings.set('myEmail', email); }
+      // access is part of the file's promise: make sure the partner's Google
+      // account can already open the shared Drive folder
+      let access = null;
+      if (fid) {
+        let pEmail = await DB.settings.get('partnerEmail');
+        if (!pEmail) { pEmail = await G.accountEmail({ account: 'partner' }).catch(() => null); if (pEmail) await DB.settings.set('partnerEmail', pEmail); }
+        access = await G.setup.ensurePartnerAccess({ folderId: fid, partnerEmail: pEmail });
+      }
       const backup = await DB.exportBackup();
       backup.type = 'partner-backup';
       backup.settingsLocal = {
@@ -340,7 +347,10 @@ const Settings = (() => {
         geminiKey: gk, geminiModels: gm,
       };
       download(backup, `navigo-partner-backup-${UI.todayISO()}.json`);
-      UI.toast('הגיבוי לבן/בת הזוג ירד ✓ במכשיר שלו/שלה: הגדרות ← שחזור מגיבוי', 'success');
+      if (access === 'manual')
+        UI.toast('הגיבוי ירד, אבל לא הצלחתי לוודא גישה לתיקייה בדרייב — שתפו אותה עם החשבון של בן/בת הזוג (או פרסו גשר מעודכן ונסו שוב)', 'warning');
+      else
+        UI.toast(`הגיבוי לבן/בת הזוג ירד ✓${access === 'granted' ? ' הגישה לתיקייה בדרייב הוענקה עכשיו.' : ''} במכשיר שלו/שלה: הגדרות ← שחזור מגיבוי`, 'success');
     }));
 
     document.getElementById('st-import').addEventListener('click', () => document.getElementById('st-import-file').click());

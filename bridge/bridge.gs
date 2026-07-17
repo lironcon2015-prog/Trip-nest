@@ -16,7 +16,7 @@
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.2.1';
+const BRIDGE_VERSION = '1.2.2';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -50,6 +50,7 @@ function _dispatch(req) {
     case 'ping':            return ping();
     case 'createFolder':    return createFolder(req);
     case 'findShared':      return findShared(req);
+    case 'shareFolder':     return shareFolder(req);
     case 'dbGet':           return dbGet(req);
     case 'dbPut':           return dbPut(req);
     case 'upload':          return upload(req);
@@ -81,6 +82,13 @@ function createFolder(req) {
   folder.setDescription(ROOT_MARKER);
   if (req.partnerEmail) folder.addEditor(req.partnerEmail);
   return { folderId: folder.getId(), folderName: folder.getName() };
+}
+// grant the partner's account edit access after the fact (works for the folder
+// owner and for editors alike) — used by the partner-backup export flow
+function shareFolder(req) {
+  if (!req.folderId || !req.email) throw new Error('shareFolder: missing folderId/email');
+  DriveApp.getFolderById(req.folderId).addEditor(req.email);
+  return { shared: true };
 }
 
 /* מכשיר שני: איתור תיקיית TripNest ששותפה אליי (או שכבר קיימת אצלי) */
