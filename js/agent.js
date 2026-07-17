@@ -460,7 +460,7 @@ ${convo || '(אין)'}
     if (!log.children.length) {
       addBubble('model', 'היי! אני העוזר של Navigo 🛫 אפשר לשאול אותי על הטיולים, המסמכים והתוכניות — או ללחוץ על אחת הפעולות למעלה.');
     }
-    log.scrollTop = log.scrollHeight;
+    scrollToEnd();
     updateJump();
     autoSummarize(); // background: condense trips that just became "past"
   }
@@ -488,14 +488,23 @@ ${convo || '(אין)'}
       }
     }
     if (!hits && !arch.length) log.innerHTML = `<div class="text-center text-slate-400 text-sm py-8">אין תוצאות ל"${UI.esc(q)}"</div>`;
-    log.scrollTop = 0;
+    scroller().scrollTop = 0;
   }
 
-  function updateJump() {
+  // the log itself only scrolls when the layout constrains its height; normally
+  // the whole view scrolls inside #app-scroll — track whichever actually overflows
+  function scroller() {
     const log = document.getElementById('agent-log');
+    return log.scrollHeight > log.clientHeight + 4 ? log : document.getElementById('app-scroll');
+  }
+  const scrollToEnd = () => { const s = scroller(); s.scrollTop = s.scrollHeight; };
+
+  function updateJump() {
     const btn = document.getElementById('agent-jump');
     if (!btn) return;
-    btn.classList.toggle('hidden', log.scrollHeight - log.scrollTop - log.clientHeight < 250);
+    const inAgent = !document.getElementById('view-agent').classList.contains('hidden');
+    const s = scroller();
+    btn.classList.toggle('hidden', !inAgent || s.scrollHeight - s.scrollTop - s.clientHeight < 250);
   }
 
   /* quote-and-reply: tap a bubble to attach it as context to the next message */
@@ -521,7 +530,7 @@ ${convo || '(אין)'}
       if (t) setQuote(t.slice(0, 200));
     });
     log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
+    scrollToEnd();
     return el;
   }
 
@@ -696,9 +705,12 @@ ${convo || '(אין)'}
     render();
     const form = document.getElementById('agent-form');
     form.addEventListener('submit', (e) => { e.preventDefault(); send(document.getElementById('agent-input').value); });
-    const log = document.getElementById('agent-log');
-    log.addEventListener('scroll', updateJump);
-    document.getElementById('agent-jump').addEventListener('click', () => log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' }));
+    document.getElementById('agent-log').addEventListener('scroll', updateJump);
+    document.getElementById('app-scroll').addEventListener('scroll', updateJump);
+    document.getElementById('agent-jump').addEventListener('click', () => {
+      const s = scroller();
+      s.scrollTo({ top: s.scrollHeight, behavior: 'smooth' });
+    });
     document.getElementById('agent-quote-x').addEventListener('click', clearQuote);
     document.getElementById('agent-memory-btn').addEventListener('click', memoryScreen);
     const searchBar = document.getElementById('agent-search-bar');
