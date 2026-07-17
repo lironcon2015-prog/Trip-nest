@@ -9,11 +9,11 @@ const Trips = (() => {
   /* ---------- trip type ---------- */
   // each type carries a Hebrew hint describing its character, injected into the agent context
   const TRIP_TYPES = {
-    family:   { label: 'משפחתית', emoji: '👨‍👩‍👧‍👦', hint: 'טיול משפחתי — קצב שמתאים לכולם, הפסקות מנוחה ואוכל לכל הגילאים; אם נוסעים ילדים — אטרקציות ידידותיות לילדים' },
-    couple:   { label: 'זוגית', emoji: '💑', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
-    solo:     { label: 'אישית', emoji: '🚶', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
-    business: { label: 'עסקית', emoji: '💼', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
-    friends:  { label: 'חברים/גיבוש', emoji: '🎉', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
+    family:   { label: 'משפחתית', hint: 'טיול משפחתי — קצב שמתאים לכולם, הפסקות מנוחה ואוכל לכל הגילאים; אם נוסעים ילדים — אטרקציות ידידותיות לילדים' },
+    couple:   { label: 'זוגית', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
+    solo:     { label: 'אישית', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
+    business: { label: 'עסקית', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
+    friends:  { label: 'חברים/גיבוש', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
   };
 
   // manual override (trip.tripType) wins. Auto-detection sees only family members
@@ -56,7 +56,7 @@ const Trips = (() => {
           : `<div class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-7xl opacity-90">${t.coverEmoji || '🧳'}</div>`}
         <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"></div>
         ${pill ? `<span class="absolute top-3 left-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${pill}</span>` : ''}
-        ${tt ? `<span class="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${tt.emoji} ${tt.label}</span>` : ''}
+        ${tt ? `<span class="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${tt.label}</span>` : ''}
         <div class="absolute bottom-0 right-0 left-0 p-4 flex items-end justify-between">
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
@@ -92,7 +92,7 @@ const Trips = (() => {
           <div><label class="tn-label">סוג הנסיעה</label>
             <select id="tf-type" class="tn-input">
               <option value="">זיהוי אוטומטי לפי המשתתפים</option>
-              ${Object.entries(TRIP_TYPES).map(([k, v]) => `<option value="${k}" ${trip?.tripType === k ? 'selected' : ''}>${v.emoji} ${v.label}</option>`).join('')}
+              ${Object.entries(TRIP_TYPES).map(([k, v]) => `<option value="${k}" ${trip?.tripType === k ? 'selected' : ''}>${v.label}</option>`).join('')}
             </select>
           </div>
           <div><label class="tn-label">תמונת החופשה</label>
@@ -177,7 +177,7 @@ const Trips = (() => {
     document.getElementById('trip-title').textContent = trip.name;
     const tt = tripType(trip, members);
     document.getElementById('trip-sub').textContent =
-      [tt ? `${tt.emoji} ${tt.label}` : '', trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
+      [tt ? tt.label : '', trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
     document.getElementById('trip-travelers').innerHTML =
       travelers.map(m => UI.avatarHTML(m, 'w-5 h-5 !text-[8px]', 'ring-2 ring-white')).join('');
     document.getElementById('trip-edit').onclick = () => editModal(trip);
