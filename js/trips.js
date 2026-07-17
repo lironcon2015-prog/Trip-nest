@@ -6,6 +6,30 @@ const Trips = (() => {
 
   const activeTripId = () => _activeTripId;
 
+  /* ---------- trip type ---------- */
+  // each type carries a Hebrew hint describing its character, injected into the agent context
+  const TRIP_TYPES = {
+    family:   { label: 'משפחתית', emoji: '👨‍👩‍👧‍👦', hint: 'טיול משפחתי עם ילדים — קצב מותאם, אטרקציות ידידותיות לילדים, הפסקות מנוחה ואוכל שמתאים לכל הגילאים' },
+    couple:   { label: 'זוגית', emoji: '💑', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
+    solo:     { label: 'אישית', emoji: '🚶', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
+    business: { label: 'עסקית', emoji: '💼', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
+    friends:  { label: 'חברים/גיבוש', emoji: '🎉', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
+  };
+
+  // manual override (trip.tripType) wins; otherwise inferred from the travelers:
+  // a known minor → family, 1 → solo, 2 adults → couple, 3+ adults → friends/group
+  function tripType(trip, members) {
+    if (trip.tripType && TRIP_TYPES[trip.tripType]) return { key: trip.tripType, auto: false, ...TRIP_TYPES[trip.tripType] };
+    const travelers = (trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean);
+    if (!travelers.length) return null;
+    const ages = travelers.map(m => UI.age(m.birthDate));
+    const key = ages.some(a => a != null && a < 18) ? 'family'
+      : travelers.length === 1 ? 'solo'
+      : travelers.length === 2 ? 'couple'
+      : 'friends';
+    return { key, auto: true, ...TRIP_TYPES[key] };
+  }
+
   /* ---------- trips list ---------- */
   async function renderList() {
     const el = document.getElementById('trips-list');
@@ -18,6 +42,7 @@ const Trips = (() => {
 
     const card = (t) => {
       const travelers = Members.sorted((t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
+      const tt = tripType(t, members);
       const du = t.startDate ? UI.daysUntil(t.startDate) : null;
       const tx = UI.expenseTotals(allExpenses.filter(x => x.tripId === t.id), t.fxRates);
       const cost = [tx.ils > 0 ? UI.fmtMoney(tx.ils) : '',
@@ -30,6 +55,7 @@ const Trips = (() => {
           : `<div class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-7xl opacity-90">${t.coverEmoji || '🧳'}</div>`}
         <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"></div>
         ${pill ? `<span class="absolute top-3 left-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${pill}</span>` : ''}
+        ${tt ? `<span class="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${tt.emoji} ${tt.label}</span>` : ''}
         <div class="absolute bottom-0 right-0 left-0 p-4 flex items-end justify-between">
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
@@ -62,6 +88,12 @@ const Trips = (() => {
             <div><label class="tn-label">תאריך חזרה</label><input id="tf-end" type="date" class="tn-input" value="${trip?.endDate || ''}"></div>
           </div>
           <div><label class="tn-label">מי נוסע?</label><div id="tf-members">${pickerHTML}</div></div>
+          <div><label class="tn-label">סוג הנסיעה</label>
+            <select id="tf-type" class="tn-input">
+              <option value="">זיהוי אוטומטי לפי המשתתפים</option>
+              ${Object.entries(TRIP_TYPES).map(([k, v]) => `<option value="${k}" ${trip?.tripType === k ? 'selected' : ''}>${v.emoji} ${v.label}</option>`).join('')}
+            </select>
+          </div>
           <div><label class="tn-label">תמונת החופשה</label>
             <div id="tf-cover-preview" class="relative w-full h-28 rounded-2xl overflow-hidden mb-2 ${cover ? '' : 'hidden'}">
               <img id="tf-cover-img" src="${cover || ''}" class="w-full h-full object-cover">
@@ -90,6 +122,7 @@ const Trips = (() => {
           destination: document.getElementById('tf-dest').value.trim(),
           startDate: start, endDate: end,
           memberIds: Members.pickedIds(document.getElementById('tf-members')),
+          tripType: document.getElementById('tf-type').value || null,
           coverEmoji: document.querySelector('.tf-emoji.bg-indigo-100')?.dataset.e || trip?.coverEmoji || '🧳',
           coverImage: cover,
         });
@@ -141,8 +174,9 @@ const Trips = (() => {
     const travelers = Members.sorted((trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
 
     document.getElementById('trip-title').textContent = trip.name;
+    const tt = tripType(trip, members);
     document.getElementById('trip-sub').textContent =
-      [trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
+      [tt ? `${tt.emoji} ${tt.label}` : '', trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
     document.getElementById('trip-travelers').innerHTML =
       travelers.map(m => UI.avatarHTML(m, 'w-5 h-5 !text-[8px]', 'ring-2 ring-white')).join('');
     document.getElementById('trip-edit').onclick = () => editModal(trip);
@@ -493,6 +527,6 @@ const Trips = (() => {
       }));
   }
 
-  return { renderList, renderTrip, editModal, activeTripId };
+  return { renderList, renderTrip, editModal, activeTripId, tripType };
 })();
 window.Trips = Trips;

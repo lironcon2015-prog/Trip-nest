@@ -371,9 +371,11 @@ ${convo || '(אין)'}
     // full detail only for current/upcoming trips; past trips shrink to a
     // summary line — keeps the prompt small as trips accumulate
     for (const t of trips) {
+      const tt = Trips.tripType(t, members);
       const base = {
         id: t.id, name: t.name, destination: t.destination, start: t.startDate, end: t.endDate,
         travelers: (t.memberIds || []).map(id => members.find(m => m.id === id)?.nameHe).filter(Boolean),
+        ...(tt ? { tripType: tt.label } : {}),
       };
       const past = t.endDate && t.endDate < ctx.today;
       if (past) {
@@ -384,6 +386,8 @@ ${convo || '(אין)'}
       const expenses = await DB.byTrip('expenses', t.id);
       ctx.trips.push({
         ...base,
+        // trip character — the agent should tailor every suggestion to it
+        ...(tt ? { tripCharacter: tt.hint } : {}),
         notes: notes.filter(n => n.tripId === t.id).map(n => ({ id: n.id, note: n.note })),
         documents: (await DB.byTrip('documents', t.id)).map(d => ({
           id: d.id, name: d.fileName, category: d.category, extracted: d.extracted || null,
