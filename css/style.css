@@ -94,3 +94,9 @@ svg.tn-ico { display: inline-block; vertical-align: -0.22em; flex: none; }
 
 /* agent chat */
 #agent-log { display: flex; flex-direction: column; gap: 10px; }
+
+/* app shell — the page itself never scrolls (so the bottom nav stays put on iOS
+   instead of riding the browser toolbar); #app-scroll is the single scroll area */
+html, body { height: 100%; overflow: hidden; }
+#app-shell { height: 100vh; height: 100dvh; }
+#app-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }

@@ -4,11 +4,12 @@ const Settings = (() => {
 
   async function render() {
     const el = document.getElementById('settings-body');
-    const [bridgeUrl, bridgeToken, partnerUrl, partnerToken, folderId, folderName, geminiKey, persona, lastSync] = await Promise.all([
+    const [bridgeUrl, bridgeToken, partnerUrl, partnerToken, folderId, folderName, geminiKey, persona, lastSync, myEmail, partnerEmail] = await Promise.all([
       DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
       DB.settings.get('partnerBridgeUrl'), DB.settings.get('partnerBridgeToken'),
       DB.settings.get('driveFolderId'), DB.settings.get('driveFolderName'),
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
+      DB.settings.get('myEmail'), DB.settings.get('partnerEmail'),
     ]);
     const keywords = await G.gmail.keywords();
     const negKeywords = await G.gmail.negKeywords();
@@ -20,6 +21,8 @@ const Settings = (() => {
         <h3 class="tn-card-title">${UI.icon('cloud', 'w-[18px] h-[18px] text-indigo-500')} גשר Google (דרייב + Gmail)</h3>
         <p class="text-[11px] text-slate-400 mb-3">הגשר הוא סקריפט קטן שרץ בחשבון Google שלכם (ראו README). הדביקו כאן את כתובתו ואת הטוקן הסודי שהגדרתם בו.</p>
         <div class="space-y-3">
+          ${myEmail ? `<div class="flex items-center justify-between bg-emerald-50 text-emerald-700 text-xs rounded-xl p-2.5"><span>המכשיר הזה מחובר בתור:</span><b dir="ltr">${UI.esc(myEmail)}</b></div>`
+        : '<div class="bg-slate-50 text-slate-400 text-[11px] rounded-xl p-2.5">עוד לא ידוע איזה חשבון מחובר — לחצו "בדיקת חיבור" כדי לזהות</div>'}
           <div><label class="tn-label">כתובת הגשר (Web app URL)</label>
             <input id="st-bridge-url" class="tn-input text-xs" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="${UI.esc(bridgeUrl || '')}"></div>
           <div><label class="tn-label">טוקן סודי</label>
@@ -35,6 +38,7 @@ const Settings = (() => {
               <input id="st-partner-url" class="tn-input text-xs" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="${UI.esc(partnerUrl || '')}">
               <input id="st-partner-token" type="password" class="tn-input text-xs" dir="ltr" placeholder="הטוקן של הגשר שלו/שלה" value="${UI.esc(partnerToken || '')}">
               <button id="st-ping-partner" class="tn-btn-secondary w-full !text-xs">${UI.icon('plug', 'w-4 h-4')} בדיקת חיבור לתיבה השנייה</button>
+              ${partnerEmail ? `<div class="flex items-center justify-between text-[11px] text-slate-500 px-1"><span>התיבה של בן/בת הזוג:</span><b dir="ltr">${UI.esc(partnerEmail)}</b></div>` : ''}
             </div>
           </div>
           <div class="bg-slate-50 rounded-xl p-3 text-sm">
@@ -107,10 +111,10 @@ const Settings = (() => {
         <div class="space-y-2">
           <button id="st-vault-pin" class="tn-menu-btn">${UI.icon('key', 'w-4 h-4')} קוד גישה לכספת הדרכונים</button>
           <button id="st-export" class="tn-menu-btn">${UI.icon('download', 'w-4 h-4')} ייצוא גיבוי מלא (JSON)</button>
-          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} קובץ חיבור לבן/בת הזוג</button>
-          <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי / קובץ חיבור</button>
+          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} גיבוי מלא לבן/בת הזוג (נתונים + חיבורים)</button>
+          <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי</button>
           <input type="file" id="st-import-file" accept="application/json" class="hidden">
-          <p class="text-[11px] text-slate-400">הגיבוי המלא כולל את כל הנתונים וגם את החיבורים (טוקנים ומפתחות) — שמרו על הקובץ. צילומי הדרכון לא נכללים — הם לא עוזבים את המכשיר.</p>
+          <p class="text-[11px] text-slate-400">שני הגיבויים כוללים את כל הנתונים והחיבורים. "גיבוי מלא" משחזר את <b>המכשיר הזה</b>; "לבן/בת הזוג" הוא קובץ אחד שמרימים במכשיר שלו/שלה דרך "שחזור מגיבוי" — החיבורים כבר מוחלפים לתפקיד הנכון (הגשר שלו/שלה כראשי). צילומי הדרכון לא נכללים — הם לא עוזבים את המכשיר.</p>
         </div>
       </section>
 
@@ -136,7 +140,9 @@ const Settings = (() => {
       try {
         await saveBridgeInputs();
         const out = await G.ping();
+        if (out.email) await DB.settings.set('myEmail', out.email);
         UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
+        if (out.email) render();
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
@@ -146,6 +152,7 @@ const Settings = (() => {
         const out = await G.ping({ account: 'partner' });
         if (out.email) await DB.settings.set('partnerEmail', out.email);
         UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
+        if (out.email) render();
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
@@ -282,9 +289,9 @@ const Settings = (() => {
       UI.toast('הגיבוי ירד ✓', 'success');
     });
 
-    // connection profile for the partner's device: roles swapped (their bridge becomes
-    // "mine", ours becomes "partner"), plus the shared folder and Gemini key. No data —
-    // everything else arrives on their first Drive sync.
+    // one complete file for the partner's device: the full data backup PLUS their
+    // connections, roles swapped (their bridge becomes "mine", ours becomes "partner").
+    // This device's own local secrets (vault PIN etc.) are replaced, not exported.
     document.getElementById('st-export-partner').addEventListener('click', async (e) => UI.busy(e.currentTarget, async () => {
       const [bu, bt, pu, pt, fid, fname, gk, gm] = await Promise.all([
         DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
@@ -293,18 +300,19 @@ const Settings = (() => {
         DB.settings.get('geminiKey'), DB.settings.get('geminiModels'),
       ]);
       if (!pu || !pt) { UI.toast('קודם הגדירו את הגשר של בן/בת הזוג — הוא יהיה הגשר הראשי אצלו/אצלה', 'warning'); return; }
-      let myEmail = null;
-      try { myEmail = (await G.ping()).email || null; } catch { }
-      download({
-        app: 'TripNest', version: 2, type: 'partner-profile', exported: new Date().toISOString(),
-        settingsLocal: {
-          bridgeUrl: pu, bridgeToken: pt,
-          partnerBridgeUrl: bu, partnerBridgeToken: bt, partnerEmail: myEmail,
-          driveFolderId: fid, driveFolderName: fname,
-          geminiKey: gk, geminiModels: gm,
-        },
-      }, `navigo-partner-${UI.todayISO()}.json`);
-      UI.toast('קובץ החיבור ירד ✓ שלחו אותו לבן/בת הזוג', 'success');
+      let email = await DB.settings.get('myEmail');
+      try { email = (await G.ping()).email || email; } catch { }
+      if (email) await DB.settings.set('myEmail', email);
+      const backup = await DB.exportBackup();
+      backup.type = 'partner-backup';
+      backup.settingsLocal = {
+        bridgeUrl: pu, bridgeToken: pt,
+        partnerBridgeUrl: bu, partnerBridgeToken: bt, partnerEmail: email,
+        driveFolderId: fid, driveFolderName: fname,
+        geminiKey: gk, geminiModels: gm,
+      };
+      download(backup, `navigo-partner-backup-${UI.todayISO()}.json`);
+      UI.toast('הגיבוי לבן/בת הזוג ירד ✓ במכשיר שלו/שלה: הגדרות ← שחזור מגיבוי', 'success');
     }));
 
     document.getElementById('st-import').addEventListener('click', () => document.getElementById('st-import-file').click());

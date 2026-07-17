@@ -11,7 +11,7 @@ const App = (() => {
     VIEWS.forEach(v => document.getElementById('view-' + v).classList.toggle('hidden', v !== view));
     document.querySelectorAll('#bottom-nav [data-nav]').forEach(b =>
       b.classList.toggle('nav-active', b.dataset.nav === NAV_MAP[view]));
-    window.scrollTo(0, 0);
+    document.getElementById('app-scroll')?.scrollTo(0, 0);
     if (view === 'home') Home.render();
     else if (view === 'trips') Trips.renderList();
     else if (view === 'trip') Trips.renderTrip(param || Trips.activeTripId());

@@ -33,9 +33,10 @@
   </script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased select-none">
-<script>window._BUNDLE_VERSION = '1.19.1';</script>
+<script>window._BUNDLE_VERSION = '1.20.0';</script>
 
-<div class="max-w-lg mx-auto min-h-screen relative">
+<div id="app-shell" class="max-w-lg mx-auto relative flex flex-col">
+<main id="app-scroll" class="flex-1 overflow-y-auto relative">
 
   <!-- ============ HOME ============ -->
   <div id="view-home" class="view pb-28">
@@ -101,7 +102,7 @@
   </div>
 
   <!-- ============ SINGLE TRIP ============ -->
-  <div id="view-trip" class="view hidden pb-28 min-h-screen">
+  <div id="view-trip" class="view hidden pb-28" style="min-height: 100%">
     <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
       <div class="flex items-center gap-3 px-4 py-3">
         <button id="trip-back" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 active:scale-95 shrink-0">
@@ -130,7 +131,7 @@
   </div>
 
   <!-- ============ AGENT ============ -->
-  <div id="view-agent" class="view hidden pb-28 flex flex-col" style="min-height: 100dvh">
+  <div id="view-agent" class="view hidden pb-28 flex flex-col" style="min-height: 100%">
     <header class="sticky top-0 z-40 bg-white/70 backdrop-blur-lg pt-safe">
       <div class="px-5 py-4 flex items-center gap-3">
         <span class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-xl shadow-md">🦉</span>
@@ -160,8 +161,10 @@
     <div id="settings-body" class="px-4 pt-2"></div>
   </div>
 
+  </main>
+
   <!-- ============ BOTTOM NAV ============ -->
-  <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-t border-slate-100 pb-safe">
+  <nav id="bottom-nav" class="shrink-0 z-50 bg-white/80 backdrop-blur-xl border-t border-slate-100 pb-safe">
     <div class="max-w-lg mx-auto flex items-end justify-around px-2 pt-2 pb-2">
       <button data-nav="home" class="nav-active flex flex-col items-center gap-0.5 w-16">
         <svg class="nav-ico w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/></svg>
