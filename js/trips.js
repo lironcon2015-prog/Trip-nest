@@ -7,13 +7,14 @@ const Trips = (() => {
   const activeTripId = () => _activeTripId;
 
   /* ---------- trip type ---------- */
-  // each type carries a Hebrew hint describing its character, injected into the agent context
+  // each type carries a Hebrew hint (injected into the agent context) and a color:
+  // `card` = translucent pill over the cover photo, `pill` = tinted pill on light bg
   const TRIP_TYPES = {
-    family:   { label: 'משפחתית', hint: 'טיול משפחתי — קצב שמתאים לכולם, הפסקות מנוחה ואוכל לכל הגילאים; אם נוסעים ילדים — אטרקציות ידידותיות לילדים' },
-    couple:   { label: 'זוגית', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
-    solo:     { label: 'אישית', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
-    business: { label: 'עסקית', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
-    friends:  { label: 'חברים/גיבוש', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
+    family:   { label: 'משפחתית', card: 'bg-emerald-400/40', pill: 'bg-emerald-500/15 text-emerald-600', hint: 'טיול משפחתי — קצב שמתאים לכולם, הפסקות מנוחה ואוכל לכל הגילאים; אם נוסעים ילדים — אטרקציות ידידותיות לילדים' },
+    couple:   { label: 'זוגית', card: 'bg-rose-400/40', pill: 'bg-rose-500/15 text-rose-600', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
+    solo:     { label: 'אישית', card: 'bg-sky-400/40', pill: 'bg-sky-500/15 text-sky-600', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
+    business: { label: 'עסקית', card: 'bg-slate-500/40', pill: 'bg-slate-500/15 text-slate-600', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
+    friends:  { label: 'חברים/גיבוש', card: 'bg-amber-400/40', pill: 'bg-amber-500/15 text-amber-600', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
   };
 
   // manual override (trip.tripType) wins. Auto-detection sees only family members
@@ -56,7 +57,7 @@ const Trips = (() => {
           : `<div class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-7xl opacity-90">${t.coverEmoji || '🧳'}</div>`}
         <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"></div>
         ${pill ? `<span class="absolute top-3 left-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${pill}</span>` : ''}
-        ${tt ? `<span class="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${tt.label}</span>` : ''}
+        ${tt ? `<span class="absolute top-3 right-3 ${tt.card} backdrop-blur-md text-white text-xs font-medium px-3 py-1.5 rounded-full">${tt.label}</span>` : ''}
         <div class="absolute bottom-0 right-0 left-0 p-4 flex items-end justify-between">
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
@@ -176,8 +177,9 @@ const Trips = (() => {
 
     document.getElementById('trip-title').textContent = trip.name;
     const tt = tripType(trip, members);
-    document.getElementById('trip-sub').textContent =
-      [tt ? tt.label : '', trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
+    const sub = [trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
+    document.getElementById('trip-sub').innerHTML =
+      `${tt ? `<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${tt.pill}">${tt.label}</span> ` : ''}${UI.esc(sub)}`;
     document.getElementById('trip-travelers').innerHTML =
       travelers.map(m => UI.avatarHTML(m, 'w-5 h-5 !text-[8px]', 'ring-2 ring-white')).join('');
     document.getElementById('trip-edit').onclick = () => editModal(trip);
