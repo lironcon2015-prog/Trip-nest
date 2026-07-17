@@ -4,12 +4,13 @@ const Settings = (() => {
 
   async function render() {
     const el = document.getElementById('settings-body');
-    const [bridgeUrl, bridgeToken, partnerUrl, partnerToken, folderId, folderName, geminiKey, persona, lastSync, myEmail, partnerEmail] = await Promise.all([
+    const [bridgeUrl, bridgeToken, partnerUrl, partnerToken, folderId, folderName, geminiKey, persona, lastSync, myEmail, partnerEmail, foodProfile, foodFavorites, foodView] = await Promise.all([
       DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
       DB.settings.get('partnerBridgeUrl'), DB.settings.get('partnerBridgeToken'),
       DB.settings.get('driveFolderId'), DB.settings.get('driveFolderName'),
       DB.settings.get('geminiKey'), DB.settings.get('agentPersona'), DB.settings.get('lastSync'),
       DB.settings.get('myEmail'), DB.settings.get('partnerEmail'),
+      Food.profile(), Food.favoritesRaw(), Food.viewMode(),
     ]);
     const keywords = await G.gmail.keywords();
     const negKeywords = await G.gmail.negKeywords();
@@ -95,6 +96,23 @@ const Settings = (() => {
             <textarea id="st-persona" rows="6" class="tn-input text-xs leading-relaxed">${UI.esc(persona || Agent.DEFAULT_PERSONA)}</textarea>
             <p class="text-[11px] text-slate-400 mt-1">האישיות משותפת לשניכם — ערכו אותה יחד 💜</p></div>
           <button id="st-save-gemini" class="tn-btn-secondary w-full">שמירה</button>
+        </div>
+      </section>
+
+      <!-- Food -->
+      <section class="tn-card">
+        <h3 class="tn-card-title">${UI.icon('food', 'w-[18px] h-[18px] text-indigo-500')} אוכל ותזונה</h3>
+        <div class="space-y-3">
+          <div><label class="tn-label">פרופיל התזונה המשפחתי <span class="text-slate-300">(משותף לשניכם, מוזרק לסוכן)</span></label>
+            <textarea id="st-food-profile" rows="4" class="tn-input text-xs leading-relaxed" placeholder="למשל: לא אוכלים בשר ועוף לא כשרים. בעיקר צמחוני — פיצה נפוליטנית, פסטה וצ׳יפס לילדים, גם סלמון. ארוחת בוקר במלון.">${UI.esc(foodProfile)}</textarea></div>
+          <div><label class="tn-label">חיפושים מהירים — "רעבים עכשיו" <span class="text-slate-300">(מופרדים בפסיק)</span></label>
+            <input id="st-food-favs" class="tn-input text-xs" value="${UI.esc(foodFavorites)}"></div>
+          <div><label class="tn-label">תצוגת תוכנית האוכל <span class="text-slate-300">(במכשיר הזה)</span></label>
+            <select id="st-food-view" class="tn-input">
+              <option value="tab" ${foodView === 'tab' ? 'selected' : ''}>טאב "אוכל" נפרד בטיול</option>
+              <option value="timeline" ${foodView === 'timeline' ? 'selected' : ''}>משולב בתוך ציר הזמן</option>
+            </select></div>
+          <button id="st-save-food" class="tn-btn-secondary w-full">שמירה</button>
         </div>
       </section>
 
@@ -269,6 +287,15 @@ const Settings = (() => {
       await DB.settings.set('agentPersona', document.getElementById('st-persona').value.trim());
       await DB.touchShared(); G.Sync.queue();
       UI.toast('הסוכן עודכן ✓', 'success');
+    });
+
+    /* food */
+    document.getElementById('st-save-food').addEventListener('click', async () => {
+      await DB.settings.set('foodProfile', document.getElementById('st-food-profile').value.trim());
+      await DB.settings.set('foodFavorites', document.getElementById('st-food-favs').value.trim());
+      await DB.settings.set('foodView', document.getElementById('st-food-view').value);
+      await DB.touchShared(); G.Sync.queue();
+      UI.toast('הגדרות האוכל נשמרו ✓', 'success');
     });
 
     document.getElementById('st-test-models').addEventListener('click', async (e) => {

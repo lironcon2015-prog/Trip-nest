@@ -47,6 +47,8 @@ const Itinerary = (() => {
     (await DB.byTrip('expenses', trip.id)).forEach(x => { if (x.eventId) expByEvent[x.eventId] = x; });
     const docById = {};
     (await DB.byTrip('documents', trip.id)).forEach(d => { if (d.extracted) docById[d.id] = d; });
+    const foodInline = (await Food.viewMode()) === 'timeline';   // meals get strip + gap rows inside the timeline
+    const tripDaySet = new Set(foodInline ? Food.tripDays(trip) : []);
     const all = [...events, ...computedDeadlines(events)]
       .sort((a, b) => (a.date + (a.time || '99:99')).localeCompare(b.date + (b.time || '99:99')));
 
@@ -74,7 +76,7 @@ const Itinerary = (() => {
         <div class="text-xs text-white/80 font-medium shrink-0">${all.length} אירועים</div>
       </div>`;
 
-    container.innerHTML = banner + `<div class="space-y-5">` + Object.keys(byDay).sort().map(date => {
+    container.innerHTML = banner + (foodInline ? Food.stripHTML(Food.stats(trip, events)) : '') + `<div class="space-y-5">` + Object.keys(byDay).sort().map(date => {
       const dayNum = trip.startDate ? Math.round((UI.toDate(date) - UI.toDate(trip.startDate)) / 86400000) + 1 : null;
       const d = UI.toDate(date);
       const evs = byDay[date];
@@ -96,7 +98,11 @@ const Itinerary = (() => {
           })()}</span>
         </div>
         <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          ${evs.map((e, i) => eventCard(e, i === evs.length - 1, expByEvent[e.id], docById[e.docId])).join('')}
+          ${evs.map((e, i) => eventCard(e, i === evs.length - 1, expByEvent[e.id], docById[e.docId], trip)).join('')}
+          ${tripDaySet.has(date)
+            ? ['lunch', 'dinner'].filter(s => !evs.some(e => e.type === 'food' && e.mealSlot === s))
+                .map(s => `<div class="mt-3">${Food.gapRowHTML(date, s, true)}</div>`).join('')
+            : ''}
         </div>
       </div>`;
     }).join('') + `</div>
@@ -105,8 +111,12 @@ const Itinerary = (() => {
     document.getElementById('it-add').addEventListener('click', () => editModal(trip));
     container.querySelectorAll('[data-event]').forEach(b => b.addEventListener('click', async () => {
       const ev = events.find(e => e.id === b.dataset.event);
-      if (ev) editModal(trip, ev);
+      if (!ev) return;
+      if (ev.type === 'food' && ev.mealSlot) Food.mealModal(trip, { ev });
+      else editModal(trip, ev);
     }));
+    Food.bind(container, trip, events);
+    Food.bindStrip(container);
     container.querySelectorAll('[data-eventdoc]').forEach(b => b.addEventListener('click', async (e) => {
       e.stopPropagation();
       const doc = await DB.get('documents', b.dataset.eventdoc);
@@ -186,11 +196,12 @@ const Itinerary = (() => {
     return parts.join(' · ');
   }
 
-  function eventCard(e, last = false, cost = null, doc = null) {
+  function eventCard(e, last = false, cost = null, doc = null, trip = null) {
     const t = UI.eventType(e.type);
     const deadline = e.type === 'deadline' || e.isDeadline;
+    const meal = e.type === 'food' && !!e.mealSlot;
     const detail = e.computed ? '' : docDetailLine(e, doc);
-    const note = [e.notes ? UI.esc(e.notes) : '', e.computed ? 'תזכורת אוטומטית' : ''].filter(Boolean).join(' · ');
+    const note = [meal && e.area ? UI.esc(e.area) : '', e.notes ? UI.esc(e.notes) : '', e.computed ? 'תזכורת אוטומטית' : ''].filter(Boolean).join(' · ');
     return `
       <div class="flex gap-3">
         <div class="flex flex-col items-center shrink-0">
@@ -200,7 +211,7 @@ const Itinerary = (() => {
         <div class="flex-1 min-w-0 ${last ? '' : 'pb-4'}">
           <div class="flex items-start justify-between gap-2">
             <button class="flex-1 min-w-0 text-right" ${e.computed ? `data-eventauto="${e.id}"` : `data-event="${e.id}"`}>
-              <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} line-clamp-2 pt-0.5">${UI.esc(e.title)}</span>
+              <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} line-clamp-2 pt-0.5">${meal ? `${Food.slotHe(e.mealSlot)} · ` : ''}${UI.esc(e.title)}</span>
               ${detail ? `<span class="block text-[11px] text-slate-400 mt-0.5">${detail}</span>` : ''}
             </button>
             <span class="flex items-center gap-2 shrink-0">
@@ -212,6 +223,7 @@ const Itinerary = (() => {
             </span>
           </div>
           ${note ? `<div class="bg-slate-50 rounded-lg px-3 py-2 text-[11px] ${deadline ? 'text-amber-600' : 'text-slate-500'} mt-1.5">${note}</div>` : ''}
+          ${meal && trip ? Food.mealActionsHTML(trip, e) : ''}
         </div>
       </div>`;
   }

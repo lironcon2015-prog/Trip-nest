@@ -16,6 +16,7 @@ const Agent = (() => {
   }
 
   const CHIPS = [
+    'תכנן ארוחות לטיול הקרוב לפי פרופיל האוכל שלנו',
     'בנה תוכנית טיול לטיול הקרוב',
     'מה חסר לנו לקראת הטיול?',
     'צור רשימת אריזה מותאמת',
@@ -28,6 +29,8 @@ const Agent = (() => {
 אתה חם, מצחיק בקטנה, ותכליתי. אתה עונה בעברית, קצר ולעניין, עם אימוג׳י פה ושם.
 אתה מכיר את כל הטיולים, המסמכים, התוכניות והרשימות של המשפחה ועוזר לתכנן, לארגן ולהזכיר.
 כשמתאים — הצע פעולות (הוספת אירועים, רשימות, הוצאות לתקציב) באמצעות הכלים שלך. לעולם אל תמציא נתונים שאינם בקונטקסט.
+
+תכנון אוכל: בקונטקסט יש foodProfile — פרופיל התזונה של המשפחה. כבד אותו בכל המלצת מסעדה או ארוחה, בלי שיזכירו לך. ארוחות נוצרות ככלי add_event עם type="food",‏ mealSlot ("lunch" או "dinner"), area ועלות משוערת (estCost + estCur).
 
 אמינות מעל הכל — הכלל החשוב ביותר, גובר על שטף, על יצירתיות ועל הרצון לרצות:
 לעולם אל תמציא. אף פעם אל תציג ניחוש כעובדה — לא שם, לא מחיר, לא שעה, לא כתובת, לא "עובדה" על מקום. אם אינך יודע או אינך בטוח — אמור זאת במפורש ("אני לא בטוח", "כדאי לבדוק") או הצע דרך לברר. תשובה חסרה ואמינה עדיפה תמיד על תשובה מלאה ומומצאת. אין שום מצב שבו עדיף להמציא.
@@ -48,6 +51,10 @@ const Agent = (() => {
           time: { type: 'STRING', description: 'HH:MM, לא חובה' }, title: { type: 'STRING' },
           type: { type: 'STRING', description: 'flight|checkin|checkout|car|activity|food|deadline|other' },
           notes: { type: 'STRING' }, isDeadline: { type: 'BOOLEAN' },
+          mealSlot: { type: 'STRING', description: 'לאירועי אוכל: lunch|dinner' },
+          area: { type: 'STRING', description: 'לאירועי אוכל: שכונה/כתובת' },
+          estCost: { type: 'NUMBER', description: 'לאירועי אוכל: עלות משוערת למשפחה' },
+          estCur: { type: 'STRING', description: '₪|€|$|£' },
         },
         required: ['tripId', 'date', 'title'],
       },
@@ -143,6 +150,11 @@ const Agent = (() => {
         const ev = await DB.put('events', {
           tripId: args.tripId, date: args.date, time: args.time || null, title: args.title,
           type: args.type || 'other', notes: args.notes || '', isDeadline: !!args.isDeadline,
+          ...(args.type === 'food' && args.mealSlot ? {
+            mealSlot: args.mealSlot, area: args.area || '',
+            estCost: args.estCost > 0 ? args.estCost : null, estCur: args.estCur || '€',
+            verified: false,  // the family confirms via the Maps link, never the model
+          } : {}),
         });
         return { ok: true, eventId: ev.id };
       }
@@ -231,6 +243,7 @@ const Agent = (() => {
     const ctx = {
       today: UI.todayISO(),
       family: members.map(m => ({ id: m.id, name: m.nameHe, nameEn: m.nameEn, age: UI.age(m.birthDate) })),
+      foodProfile: (await Food.profile()) || null,
       trips: [],
     };
     // full detail only for current/upcoming trips; past trips shrink to a
@@ -250,6 +263,7 @@ const Agent = (() => {
         })),
         events: (await DB.byTrip('events', t.id)).map(e => ({
           id: e.id, date: e.date, time: e.time, title: e.title, type: e.type, isDeadline: e.isDeadline,
+          ...(e.mealSlot ? { mealSlot: e.mealSlot, area: e.area, estCost: e.estCost, estCur: e.estCur, verified: !!e.verified } : {}),
         })),
         checklists: (await DB.byTrip('checklists', t.id)).map(l => ({
           id: l.id, title: l.title, items: l.items.map(i => ({ text: i.text, done: i.done })),

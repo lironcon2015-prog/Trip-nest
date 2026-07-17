@@ -147,6 +147,11 @@ const Trips = (() => {
       travelers.map(m => UI.avatarHTML(m, 'w-5 h-5 !text-[8px]', 'ring-2 ring-white')).join('');
     document.getElementById('trip-edit').onclick = () => editModal(trip);
 
+    // the food tab exists only in 'tab' view mode; in 'timeline' mode meals live inside the timeline
+    const showFoodTab = (await Food.viewMode()) === 'tab';
+    document.querySelector('#trip-tabs [data-tab="food"]').classList.toggle('hidden', !showFoodTab);
+    if (!showFoodTab && _activeTab === 'food') _activeTab = 'timeline';
+
     const tabs = document.querySelectorAll('#trip-tabs button');
     tabs.forEach(b => {
       b.classList.toggle('tab-active', b.dataset.tab === _activeTab);
@@ -159,12 +164,14 @@ const Trips = (() => {
     else if (_activeTab === 'timeline') await Itinerary.renderTab(trip, panel);
     else if (_activeTab === 'checklist') await renderChecklist(trip, panel);
     else if (_activeTab === 'budget') await renderBudget(trip, panel);
+    else if (_activeTab === 'food') await Food.renderTab(trip, panel);
 
     const fab = document.getElementById('trip-fab');
     fab.onclick = () => {
       if (_activeTab === 'timeline') Itinerary.editModal(trip);
       else if (_activeTab === 'checklist') addChecklistModal(trip);
       else if (_activeTab === 'budget') expenseModal(trip);
+      else if (_activeTab === 'food') Food.mealModal(trip, {});
       else addDocChooser(trip);
     };
   }
