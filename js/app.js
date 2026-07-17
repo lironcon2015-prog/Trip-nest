@@ -93,15 +93,15 @@ const App = (() => {
       (await Itinerary.upcomingDeadlines(14)).slice(0, 4).forEach(d =>
         alerts.push({ level: 'info', text: `${d.title} · ${d.daysUntil === 0 ? 'היום' : `בעוד ${d.daysUntil} ימים`} (${d.tripName})` }));
       if (!alerts.length) { el.innerHTML = ''; return; }
-      const cls = { error: 'bg-red-50 text-red-700', warning: 'bg-amber-50 text-amber-700', info: 'bg-indigo-50 text-indigo-700' };
-      const icon = { error: 'id', warning: 'clock', info: 'clock' };
+      const dot = { error: 'bg-red-500', warning: 'bg-amber-400', info: 'bg-slate-300' };
       el.innerHTML = `
-        <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <h3 class="font-bold text-slate-800 mb-3">התראות חשובות</h3>
-          <div class="space-y-2">${alerts.map(a => `
-            <div class="${cls[a.level] || cls.info} p-3 rounded-xl flex items-center gap-3 text-sm">
-              <span class="shrink-0">${UI.icon(icon[a.level] || 'clock', 'w-5 h-5')}</span><span class="leading-snug">${UI.esc(a.text)}</span>
-            </div>`).join('')}</div>
+        <div class="bg-white rounded-3xl px-4 py-2 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+          <h3 class="font-bold text-slate-800 pt-2 pb-1">מועדים חשובים</h3>
+          ${alerts.map(a => `
+            <div class="flex items-center gap-3 py-3 border-b border-slate-50 last:border-0 text-sm">
+              <span class="w-2 h-2 rounded-full ${dot[a.level] || dot.info} shrink-0"></span>
+              <span class="leading-snug text-slate-700">${UI.esc(a.text)}</span>
+            </div>`).join('')}
         </div>`;
     },
   };

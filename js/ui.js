@@ -293,7 +293,7 @@ const UI = (() => {
     esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText,
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
     fileToDataURL, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
-    DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, init, icon, ICONS,
+    DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, MONTHS_S, init, icon, ICONS,
   };
 })();
 window.UI = UI;

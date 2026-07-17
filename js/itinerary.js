@@ -55,17 +55,38 @@ const Itinerary = (() => {
     all.forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
     const today = UI.todayISO();
 
-    container.innerHTML = `<div class="space-y-5">` + Object.keys(byDay).sort().map(date => {
+    // gradient trip-summary banner
+    const tripDays = trip.startDate && trip.endDate
+      ? Math.round((UI.toDate(trip.endDate) - UI.toDate(trip.startDate)) / 86400000) + 1 : null;
+    const banner = `
+      <div class="rounded-3xl p-5 mb-5 text-white bg-gradient-to-l from-indigo-600 via-indigo-600 to-blue-600 shadow-lg shadow-indigo-600/20 flex items-end justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-[11px] text-white/70 font-medium">מסלול הטיול</div>
+          <div class="text-xl font-extrabold mt-0.5 truncate">${tripDays ? `${tripDays} ימים · ` : ''}${UI.esc(trip.name)}</div>
+          ${trip.destination ? `<div class="text-xs text-white/80 mt-1.5 flex items-center gap-1">${UI.icon('pin', 'w-3.5 h-3.5')} <span class="truncate">${UI.esc(trip.destination)}</span></div>` : ''}
+        </div>
+        <div class="text-xs text-white/80 font-medium shrink-0">${all.length} אירועים</div>
+      </div>`;
+
+    container.innerHTML = banner + `<div class="space-y-5">` + Object.keys(byDay).sort().map(date => {
       const dayNum = trip.startDate ? Math.round((UI.toDate(date) - UI.toDate(trip.startDate)) / 86400000) + 1 : null;
+      const d = UI.toDate(date);
+      const evs = byDay[date];
       return `
       <div>
-        <div class="flex items-center gap-2 mb-2 ${date === today ? 'text-indigo-600' : 'text-slate-500'}">
-          <span class="text-sm font-bold">${UI.fmtDayHeader(date)}</span>
-          ${dayNum && dayNum > 0 ? `<span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full">יום ${dayNum}</span>` : ''}
-          ${date === today ? '<span class="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full">היום</span>' : ''}
+        <div class="flex items-center gap-3 mb-2.5 px-1">
+          <span class="w-11 h-11 rounded-2xl ${date === today ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 shadow-sm'} flex flex-col items-center justify-center shrink-0">
+            <span class="text-[9px] font-medium ${date === today ? 'text-white/70' : 'text-slate-400'} leading-none mt-0.5">${UI.MONTHS_S[d.getMonth()]}</span>
+            <span class="text-[15px] font-extrabold leading-tight">${d.getDate()}</span>
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold ${date === today ? 'text-indigo-600' : 'text-slate-800'}">${dayNum && dayNum > 0 ? `יום ${dayNum}` : UI.fmtDayHeader(date)}${date === today ? ' · היום' : ''}</div>
+            ${dayNum && dayNum > 0 ? `<div class="text-[11px] text-slate-400">${UI.fmtDayHeader(date)}</div>` : ''}
+          </div>
+          <span class="text-[11px] text-slate-400 shrink-0">${evs.length} אירועים</span>
         </div>
-        <div class="border-r-2 ${date === today ? 'border-indigo-200' : 'border-slate-100'} pr-4 space-y-2.5">
-          ${byDay[date].map(e => eventCard(e)).join('')}
+        <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+          ${evs.map((e, i) => eventCard(e, i === evs.length - 1)).join('')}
         </div>
       </div>`;
     }).join('') + `</div>
@@ -83,17 +104,28 @@ const Itinerary = (() => {
     }));
   }
 
-  function eventCard(e) {
+  function eventCard(e, last = false) {
     const t = UI.eventType(e.type);
     const deadline = e.type === 'deadline' || e.isDeadline;
+    const note = [e.notes ? UI.esc(e.notes) : '', e.computed ? 'תזכורת אוטומטית' : ''].filter(Boolean).join(' · ');
     return `
-      <div class="rounded-2xl p-3.5 flex items-center gap-3 ${deadline ? 'bg-amber-50' : 'bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]'}">
-        <span class="w-9 h-9 rounded-xl ${deadline ? 'bg-amber-100 text-amber-600' : t.tint} flex items-center justify-center shrink-0">${UI.icon(t.icon, 'w-[18px] h-[18px]')}</span>
-        <button class="flex-1 min-w-0 text-right" ${e.computed ? '' : `data-event="${e.id}"`}>
-          <span class="block text-sm font-semibold ${deadline ? 'text-amber-800' : 'text-slate-800'} truncate">${UI.esc(e.title)}</span>
-          <span class="block text-[11px] ${deadline ? 'text-amber-600' : 'text-slate-400'}">${e.time || ''}${e.notes ? (e.time ? ' · ' : '') + UI.esc(e.notes) : ''}${e.computed ? ' · תזכורת אוטומטית' : ''}</span>
-        </button>
-        ${e.docId ? `<button class="text-slate-400 shrink-0 p-1" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-5 h-5')}</button>` : ''}
+      <div class="flex gap-3">
+        <div class="flex flex-col items-center shrink-0">
+          <span class="w-10 h-10 rounded-xl ${deadline ? 'bg-amber-100 text-amber-600' : t.tint} flex items-center justify-center">${UI.icon(t.icon, 'w-[19px] h-[19px]')}</span>
+          ${last ? '' : '<span class="w-px flex-1 bg-slate-100 my-1.5"></span>'}
+        </div>
+        <div class="flex-1 min-w-0 ${last ? '' : 'pb-4'}">
+          <div class="flex items-start justify-between gap-2">
+            <button class="min-w-0 text-right" ${e.computed ? '' : `data-event="${e.id}"`}>
+              <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} truncate pt-0.5">${UI.esc(e.title)}</span>
+            </button>
+            <span class="flex items-center gap-2 shrink-0">
+              ${e.docId ? `<button class="text-slate-300 -mt-0.5" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-[18px] h-[18px]')}</button>` : ''}
+              ${e.time ? `<span class="text-[11px] text-slate-400 flex items-center gap-1 pt-1">${e.time} ${UI.icon('clock', 'w-3 h-3')}</span>` : ''}
+            </span>
+          </div>
+          ${note ? `<div class="bg-slate-50 rounded-lg px-3 py-2 text-[11px] ${deadline ? 'text-amber-600' : 'text-slate-500'} mt-1.5">${note}</div>` : ''}
+        </div>
       </div>`;
   }
 

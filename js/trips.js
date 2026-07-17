@@ -139,7 +139,7 @@ const Trips = (() => {
     document.getElementById('trip-sub').textContent =
       [trip.destination, UI.fmtDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ');
     document.getElementById('trip-travelers').innerHTML =
-      travelers.map(m => UI.avatarHTML(m, 'w-8 h-8', 'ring-2 ring-white')).join('');
+      travelers.map(m => UI.avatarHTML(m, 'w-5 h-5 !text-[8px]', 'ring-2 ring-white')).join('');
     document.getElementById('trip-edit').onclick = () => editModal(trip);
 
     const tabs = document.querySelectorAll('#trip-tabs button');
