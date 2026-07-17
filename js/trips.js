@@ -324,6 +324,26 @@ const Trips = (() => {
       </div>`;
     }).join('');
 
+    // sanity checks: possible duplicates (same amount+currency+category) and odd dates
+    const warnings = [];
+    const seenAmount = {};
+    for (const x of expenses) {
+      if (!(Number(x.amount) > 0)) continue;
+      const k = `${UI.normCur(x.currency)}|${Number(x.amount)}|${x.category || 'other'}`;
+      if (seenAmount[k]) warnings.push({ id: x.id, text: `אולי כפילות: "${x.title}" ו"${seenAmount[k].title}" — אותו סכום (${UI.fmtMoney(x.amount, UI.normCur(x.currency))})` });
+      else seenAmount[k] = x;
+    }
+    if (trip.endDate) for (const x of expenses)
+      if (x.date && x.date > trip.endDate) warnings.push({ id: x.id, text: `"${x.title}" מתוארך אחרי סוף הטיול — כדאי לבדוק את התאריך` });
+
+    let avgLine = '';
+    const today = UI.todayISO();
+    if (t.ils > 0 && trip.startDate && trip.startDate <= today) {
+      const end = trip.endDate && trip.endDate < today ? trip.endDate : today;
+      const days = Math.round((UI.toDate(end) - UI.toDate(trip.startDate)) / 86400000) + 1;
+      if (days >= 2) avgLine = `ממוצע יומי ${UI.fmtMoney(t.ils / days)}`;
+    }
+
     const shown = (_expFilter ? expenses.filter(x => (x.category || 'other') === _expFilter) : expenses)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const chips = catIds.length > 1 ? `
@@ -341,11 +361,18 @@ const Trips = (() => {
           </div>
           <button id="bd-setup" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5 shrink-0">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
         </div>
+        ${avgLine ? `<div class="text-[11px] text-slate-400 mt-0.5">${avgLine}</div>` : ''}
         ${t.hasLeftover ? '<div class="text-[11px] text-amber-600 mt-1">יש הוצאות במטבע ללא שער המרה — הגדירו שער ב"יעדים ושערים" לסיכום מלא</div>' : ''}
         ${totalTarget ? `<div class="mt-3">${progressBar(t.ils, totalTarget)}</div>` : ''}
         ${stacked}
         ${catRows ? `<div class="mt-2 divide-y divide-slate-50">${catRows}</div>` : ''}
       </div>
+      ${warnings.length ? `
+      <div class="bg-amber-50 rounded-2xl p-3.5 mb-4">
+        <div class="text-xs font-semibold text-amber-700 mb-1">כדאי לבדוק</div>
+        ${warnings.slice(0, 4).map(w => `<button class="exp-warn block w-full text-right text-[11px] text-amber-600 leading-relaxed" data-id="${w.id}">• ${UI.esc(w.text)}</button>`).join('')}
+        ${warnings.length > 4 ? `<div class="text-[11px] text-amber-500 mt-0.5">+${warnings.length - 4} נוספות</div>` : ''}
+      </div>` : ''}
       ${chips}
       ${shown.length ? `<div class="space-y-2.5">${shown.map(x => {
         const payer = members.find(m => m.id === x.payerId);
@@ -355,7 +382,7 @@ const Trips = (() => {
           <span class="w-10 h-10 rounded-xl ${c.tint} flex items-center justify-center shrink-0">${UI.icon(c.icon, 'w-5 h-5')}</span>
           <span class="flex-1 min-w-0">
             <span class="block text-sm font-semibold text-slate-800 truncate">${UI.esc(x.title)}</span>
-            <span class="block text-[11px] text-slate-400">${[x.date ? UI.fmtDateShort(x.date) : '', payer ? 'שילם/ה: ' + UI.esc(payer.nameHe) : '', x.docId ? 'ממסמך' : ''].filter(Boolean).join(' · ')}</span>
+            <span class="block text-[11px] text-slate-400">${[x.date ? UI.fmtDateShort(x.date) : '', payer ? 'שילם/ה: ' + UI.esc(payer.nameHe) : '', x.docId ? 'ממסמך' : (x.eventId ? 'מהמסלול' : '')].filter(Boolean).join(' · ')}</span>
           </span>
           <span class="font-bold text-slate-700 text-sm shrink-0" dir="ltr">${UI.fmtMoney(x.amount, UI.normCur(x.currency))}</span>
         </button>`;
@@ -365,7 +392,7 @@ const Trips = (() => {
     panel.querySelectorAll('.exp-filter').forEach(b => b.addEventListener('click', () => {
       _expFilter = b.dataset.cat; renderBudget(trip, panel);
     }));
-    panel.querySelectorAll('.exp-item').forEach(b => b.addEventListener('click', async () =>
+    panel.querySelectorAll('.exp-item, .exp-warn').forEach(b => b.addEventListener('click', async () =>
       expenseModal(trip, await DB.get('expenses', b.dataset.id))));
   }
 
@@ -428,8 +455,8 @@ const Trips = (() => {
             <div><label class="tn-label">מטבע</label><select id="xf-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(x?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="tn-label">תאריך</label><input id="xf-date" type="date" class="tn-input" value="${x?.date || UI.todayISO()}"></div>
-            <div><label class="tn-label">מי שילם/ה</label><select id="xf-payer" class="tn-input"><option value="">—</option>${members.map(m => `<option value="${m.id}" ${x?.payerId === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}</option>`).join('')}</select></div>
+            <div class="min-w-0"><label class="tn-label">תאריך</label><input id="xf-date" type="date" class="tn-input" value="${x?.date || UI.todayISO()}"></div>
+            <div class="min-w-0"><label class="tn-label">מי שילם/ה</label><select id="xf-payer" class="tn-input"><option value="">—</option>${members.map(m => `<option value="${m.id}" ${x?.payerId === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}</option>`).join('')}</select></div>
           </div>
           ${x ? `<button id="xf-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium">${UI.icon('trash', 'w-4 h-4')} מחיקה</button>` : ''}
         </div>`,

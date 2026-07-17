@@ -20,6 +20,8 @@ body { font-family: 'Rubik', system-ui, sans-serif; }
 .tn-input {
   width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px;
   padding: 10px 14px; font-size: 15px; color: #1e293b; outline: none; font-family: inherit;
+  /* selects/date inputs have a wide intrinsic width — keep them inside their grid cell */
+  min-width: 0; max-width: 100%;
 }
 .tn-input:focus { border-color: var(--brand); background: #fff; box-shadow: 0 0 0 3px rgb(79 70 229 / 0.08); }
 .tn-input:disabled { opacity: .5; }

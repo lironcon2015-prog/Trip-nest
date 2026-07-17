@@ -39,8 +39,12 @@ const Itinerary = (() => {
     return out;
   }
 
+  const EVENT_TO_EXPENSE_CAT = { flight: 'flight', checkin: 'stay', checkout: 'stay', car: 'car', activity: 'attraction', food: 'food' };
+
   async function renderTab(trip, container) {
     const events = (await DB.byTrip('events', trip.id));
+    const expByEvent = {};
+    (await DB.byTrip('expenses', trip.id)).forEach(x => { if (x.eventId) expByEvent[x.eventId] = x; });
     const all = [...events, ...computedDeadlines(events)]
       .sort((a, b) => (a.date + (a.time || '99:99')).localeCompare(b.date + (b.time || '99:99')));
 
@@ -83,10 +87,14 @@ const Itinerary = (() => {
             <div class="text-sm font-bold ${date === today ? 'text-indigo-600' : 'text-slate-800'}">${dayNum && dayNum > 0 ? `יום ${dayNum}` : UI.fmtDayHeader(date)}${date === today ? ' · היום' : ''}</div>
             ${dayNum && dayNum > 0 ? `<div class="text-[11px] text-slate-400">${UI.fmtDayHeader(date)}</div>` : ''}
           </div>
-          <span class="text-[11px] text-slate-400 shrink-0">${evs.length} אירועים</span>
+          <span class="text-[11px] text-slate-400 shrink-0">${evs.length} אירועים${(() => {
+            const dt = UI.expenseTotals(evs.map(e => expByEvent[e.id]).filter(Boolean), trip.fxRates);
+            const s = [dt.ils > 0 ? UI.fmtMoney(dt.ils) : '', Object.entries(dt.leftover).map(([c, v]) => UI.fmtMoney(v, c)).join(' + ')].filter(Boolean).join(' + ');
+            return s ? ` · <span dir="ltr">${s}</span>` : '';
+          })()}</span>
         </div>
         <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          ${evs.map((e, i) => eventCard(e, i === evs.length - 1)).join('')}
+          ${evs.map((e, i) => eventCard(e, i === evs.length - 1, expByEvent[e.id])).join('')}
         </div>
       </div>`;
     }).join('') + `</div>
@@ -104,7 +112,7 @@ const Itinerary = (() => {
     }));
   }
 
-  function eventCard(e, last = false) {
+  function eventCard(e, last = false, cost = null) {
     const t = UI.eventType(e.type);
     const deadline = e.type === 'deadline' || e.isDeadline;
     const note = [e.notes ? UI.esc(e.notes) : '', e.computed ? 'תזכורת אוטומטית' : ''].filter(Boolean).join(' · ');
@@ -121,6 +129,7 @@ const Itinerary = (() => {
             </button>
             <span class="flex items-center gap-2 shrink-0">
               ${e.docId ? `<button class="text-slate-300 -mt-0.5" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-[18px] h-[18px]')}</button>` : ''}
+              ${cost ? `<span class="text-[11px] text-slate-400 pt-1" dir="ltr">${UI.fmtMoney(cost.amount, UI.normCur(cost.currency))}</span>` : ''}
               ${e.time ? `<span class="text-[11px] text-slate-400 flex items-center gap-1 pt-1">${e.time} ${UI.icon('clock', 'w-3 h-3')}</span>` : ''}
             </span>
           </div>
@@ -129,7 +138,8 @@ const Itinerary = (() => {
       </div>`;
   }
 
-  function editModal(trip, ev = null) {
+  async function editModal(trip, ev = null) {
+    const linked = ev ? (await DB.byTrip('expenses', trip.id)).find(x => x.eventId === ev.id) : null;
     UI.openModal({
       title: ev ? 'עריכת אירוע' : 'אירוע חדש',
       confirmLabel: 'שמירה',
@@ -137,11 +147,15 @@ const Itinerary = (() => {
         <div class="space-y-3">
           <div><label class="tn-label">כותרת *</label><input id="ev-title" class="tn-input" value="${UI.esc(ev?.title || '')}"></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="tn-label">תאריך *</label><input id="ev-date" type="date" class="tn-input" value="${ev?.date || trip.startDate || ''}"></div>
-            <div><label class="tn-label">שעה</label><input id="ev-time" type="time" class="tn-input" value="${ev?.time || ''}"></div>
+            <div class="min-w-0"><label class="tn-label">תאריך *</label><input id="ev-date" type="date" class="tn-input" value="${ev?.date || trip.startDate || ''}"></div>
+            <div class="min-w-0"><label class="tn-label">שעה</label><input id="ev-time" type="time" class="tn-input" value="${ev?.time || ''}"></div>
           </div>
           <div><label class="tn-label">סוג</label>
             <select id="ev-type" class="tn-input">${UI.EVENT_TYPES.map(t => `<option value="${t.id}" ${ev?.type === t.id ? 'selected' : ''}>${t.he}</option>`).join('')}</select></div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2 min-w-0"><label class="tn-label">עלות (לא חובה)</label><input id="ev-cost" type="number" step="0.01" min="0" class="tn-input" dir="ltr" value="${linked?.amount ?? ''}" placeholder="נכנס לתקציב"></div>
+            <div class="min-w-0"><label class="tn-label">מטבע</label><select id="ev-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(linked?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+          </div>
           <div><label class="tn-label">הערות</label><input id="ev-notes" class="tn-input" value="${UI.esc(ev?.notes || '')}"></div>
           <label class="flex items-center gap-2 text-sm text-slate-600"><input id="ev-deadline" type="checkbox" class="accent-indigo-600 w-4 h-4" ${ev?.isDeadline ? 'checked' : ''}> מועד חשוב (מודגש)</label>
           ${ev ? `<button id="ev-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium mt-1">${UI.icon('trash', 'w-4 h-4')} מחיקת האירוע</button>` : ''}
@@ -150,13 +164,27 @@ const Itinerary = (() => {
         const title = document.getElementById('ev-title').value.trim();
         const date = document.getElementById('ev-date').value;
         if (!title || !date) throw new Error('חסרים כותרת או תאריך');
-        await DB.put('events', {
+        const saved = await DB.put('events', {
           ...(ev || { tripId: trip.id }), title, date,
           time: document.getElementById('ev-time').value || null,
           type: document.getElementById('ev-type').value,
           notes: document.getElementById('ev-notes').value.trim(),
           isDeadline: document.getElementById('ev-deadline').checked,
         });
+        const amount = parseFloat(document.getElementById('ev-cost').value);
+        if (amount > 0) {
+          // reuse the doc-proposed expense when this event came from the same document
+          const target = linked ||
+            (saved.docId ? (await DB.byTrip('expenses', trip.id)).find(x => x.docId === saved.docId && !x.eventId) : null);
+          await DB.put('expenses', {
+            ...(target || { tripId: trip.id }), eventId: saved.id, title, amount,
+            currency: document.getElementById('ev-cur').value,
+            category: target?.category || EVENT_TO_EXPENSE_CAT[saved.type] || 'other',
+            date, docId: saved.docId || target?.docId || null,
+          });
+        } else if (linked) {
+          await DB.remove('expenses', linked.id);
+        }
         G.Sync.queue();
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
         UI.toast('נשמר ✓', 'success');
@@ -164,7 +192,9 @@ const Itinerary = (() => {
     });
     document.getElementById('ev-delete')?.addEventListener('click', () =>
       UI.confirm('למחוק את האירוע?', async () => {
-        await DB.remove('events', ev.id); G.Sync.queue();
+        await DB.remove('events', ev.id);
+        if (linked) await DB.remove('expenses', linked.id);
+        G.Sync.queue();
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
         UI.toast('האירוע נמחק', 'success');
       }));
