@@ -136,13 +136,30 @@ const Settings = (() => {
       UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
 
+    // old bridge deployments report an empty email (Apps Script getActiveUser
+    // limitation) — fall back to asking once and storing the answer
+    const askEmail = (settingKey, title) => UI.openModal({
+      title,
+      confirmLabel: 'שמירה',
+      bodyHTML: `
+        <p class="text-xs text-slate-500 mb-3">החיבור תקין, אבל הגשר בגרסה הזו לא מדווח את כתובת החשבון. הזינו אותה פעם אחת — היא תוצג בהגדרות לזיהוי המכשיר. (פריסה מחדש של גשר עדכני תזהה אותה אוטומטית.)</p>
+        <input id="ae-email" type="email" dir="ltr" class="tn-input" placeholder="you@gmail.com">`,
+      onConfirm: async () => {
+        const v = document.getElementById('ae-email').value.trim();
+        if (!v) throw new Error('חסרה כתובת');
+        await DB.settings.set(settingKey, v);
+        UI.toast('נשמר ✓', 'success');
+        render();
+      },
+    });
+
     document.getElementById('st-ping-bridge').addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
       try {
         await saveBridgeInputs();
         const out = await G.ping();
-        if (out.email) await DB.settings.set('myEmail', out.email);
         UI.toast(`מחובר ✓ ${out.email || ''} (גשר v${out.version || '?'})`, 'success');
-        if (out.email) render();
+        if (out.email) { await DB.settings.set('myEmail', out.email); render(); }
+        else if (!(await DB.settings.get('myEmail'))) askEmail('myEmail', 'איזה חשבון Google מחובר כאן?');
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
@@ -150,9 +167,9 @@ const Settings = (() => {
       try {
         await saveBridgeInputs();
         const out = await G.ping({ account: 'partner' });
-        if (out.email) await DB.settings.set('partnerEmail', out.email);
         UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
-        if (out.email) render();
+        if (out.email) { await DB.settings.set('partnerEmail', out.email); render(); }
+        else if (!(await DB.settings.get('partnerEmail'))) askEmail('partnerEmail', 'איזה חשבון מחובר בתיבה השנייה?');
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 

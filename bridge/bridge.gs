@@ -16,7 +16,7 @@
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.2.0';
+const BRIDGE_VERSION = '1.2.1';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -69,7 +69,9 @@ function _json(obj) {
 /* ---------- actions ---------- */
 
 function ping() {
-  return { email: Session.getActiveUser().getEmail(), version: BRIDGE_VERSION };
+  // getActiveUser() is empty in "execute as me / anyone" web-app deployments;
+  // getEffectiveUser() is the executing account — the one whose Drive/Gmail we use
+  return { email: Session.getEffectiveUser().getEmail() || Session.getActiveUser().getEmail(), version: BRIDGE_VERSION };
 }
 
 /* מכשיר ראשון: יצירת התיקייה המשותפת ושיתופה לבן/בת הזוג */
