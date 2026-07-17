@@ -1,4 +1,4 @@
-/* TripNest — Google Apps Script bridge  (v1.3.0)
+/* TripNest — Google Apps Script bridge  (v1.4.0)
    ------------------------------------------------
    הגשר רץ בחשבון Google שלכם ומחליף את OAuth/Cloud Console:
    האפליקציה שולחת אליו בקשות, והוא ניגש ל-Drive ול-Gmail בשמכם.
@@ -16,7 +16,7 @@
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.3.0';
+const BRIDGE_VERSION = '1.4.0';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -207,7 +207,11 @@ function download(req) {
 
 function gmailSearch(req) {
   const max = Math.min(req.max || 25, 50);
-  const threads = GmailApp.search(req.q || '', 0, max);
+  // label mode (v1.4.0+): pull threads straight off matching labels — bypasses
+  // Gmail search-syntax normalization, so '@Navigo' and friends work too
+  const threads = req.label ? _labelThreads(req.label, max) : GmailApp.search(req.q || '', 0, max);
+  const after = req.after ? new Date(req.after) : null;
+  const before = req.before ? new Date(new Date(req.before).getTime() + 86400000) : null; // inclusive end day
   const out = [];
   for (const t of threads) {
     // one result per thread: the newest message carrying attachments,
@@ -218,6 +222,8 @@ function gmailSearch(req) {
       const n = msgs[i].getAttachments({ includeInlineImages: false, includeAttachments: true }).length;
       if (n) { m = msgs[i]; atts = n; break; }
     }
+    if (after && m.getDate() < after) continue;
+    if (before && m.getDate() >= before) continue;
     out.push({
       id: m.getId(),
       from: m.getFrom(),
@@ -229,6 +235,26 @@ function gmailSearch(req) {
     if (out.length >= max) break;
   }
   return { messages: out };
+}
+
+// any user label whose name CONTAINS the given word (case-insensitive) counts —
+// '@Navigo', 'Navigo!', 'טיולים/Navigo'. Threads carrying several matching labels
+// are deduped, newest first.
+function _labelThreads(word, max) {
+  const wanted = String(word).toLowerCase();
+  const seen = {};
+  const threads = [];
+  const labels = GmailApp.getUserLabels();
+  for (var i = 0; i < labels.length; i++) {
+    if (labels[i].getName().toLowerCase().indexOf(wanted) === -1) continue;
+    const ts = labels[i].getThreads(0, max);
+    for (var j = 0; j < ts.length; j++) {
+      const id = ts[j].getId();
+      if (!seen[id]) { seen[id] = true; threads.push(ts[j]); }
+    }
+  }
+  threads.sort(function (a, b) { return b.getLastMessageDate() - a.getLastMessageDate(); });
+  return threads;
 }
 
 function gmailGet(req) {

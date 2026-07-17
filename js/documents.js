@@ -336,28 +336,22 @@ const Documents = (() => {
       confirmLabel: 'סריקה',
       bodyHTML: `
         <p class="text-xs text-slate-500 mb-3">${both
-          ? 'סורק מיילים שסומנו בתווית <b>Navigo</b> בתיבות של שניכם.'
-          : 'סורק מיילים שסומנו בתווית <b>Navigo</b> בתיבה שלך. כדי לסרוק גם את התיבה של בן/בת הזוג — הוסיפו את הגשר שלו/שלה בהגדרות.'}
+          ? 'סורק מיילים שסומנו בתווית <b>Navigo</b> (או כל תווית שמכילה את המילה, למשל ‎@Navigo) בתיבות של שניכם.'
+          : 'סורק מיילים שסומנו בתווית <b>Navigo</b> (או כל תווית שמכילה את המילה, למשל ‎@Navigo) בתיבה שלך. כדי לסרוק גם את התיבה של בן/בת הזוג — הוסיפו את הגשר שלו/שלה בהגדרות.'}
           סמנו מייל בתווית ידנית, או הגדירו פילטר ב-Gmail שמדביק אותה אוטומטית (למשל לכל מייל מ-Booking או מחברת תעופה).</p>
         <div class="mb-3"><label class="tn-label">חיפוש חד-פעמי (אופציונלי)</label>
           <input id="ei-adhoc" class="tn-input" placeholder="מילה או ביטוי — יחפש בכל התיבה, בלי קשר לתווית">
         </div>
-        <label class="flex items-center gap-2 text-sm text-slate-600 mb-3">
-          <input id="ei-attach" type="checkbox" class="accent-indigo-600 w-4 h-4" checked>
-          רק מיילים עם קבצים מצורפים
-        </label>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="tn-label">מתאריך</label><input id="ei-after" type="date" class="tn-input" value="${defaultAfter(trip)}"></div>
           <div><label class="tn-label">עד תאריך</label><input id="ei-before" type="date" class="tn-input"></div>
         </div>`,
       onConfirm: async () => {
         const adhoc = document.getElementById('ei-adhoc').value.trim();
-        const q = G.gmail.buildQuery(adhoc ? [adhoc] : null, {
-          after: document.getElementById('ei-after').value || null,
-          before: document.getElementById('ei-before').value || null,
-          attachmentsOnly: document.getElementById('ei-attach').checked,
-        });
-        const results = await G.gmail.search(q);
+        const after = document.getElementById('ei-after').value || null;
+        const before = document.getElementById('ei-before').value || null;
+        const q = G.gmail.buildQuery(adhoc ? [adhoc] : null, { after, before });
+        const results = await G.gmail.search(q, 25, adhoc ? {} : { label: 'navigo', after, before });
         showEmailResults(trip, results);
         return true; // keep flow going — showEmailResults replaces the modal
       },
@@ -376,21 +370,28 @@ const Documents = (() => {
       return;
     }
     const partnerEmail = await DB.settings.get('partnerEmail');
+    // a mail that already produced documents for this trip must not be pulled twice:
+    // match by message id (new imports) or subject+sender (older imports)
+    const existing = (await DB.byTrip('documents', trip.id)).filter(d => d.emailMeta);
+    const importedKeys = new Set(existing.flatMap(d =>
+      [d.emailMeta.msgId, `${d.emailMeta.subject}|${d.emailMeta.from}`].filter(Boolean)));
+    const isImported = (r) => importedKeys.has(r.id) || importedKeys.has(`${r.subject}|${r.from}`);
     UI.openModal({
       title: `נמצאו ${results.length} מיילים`,
       confirmLabel: 'ייבוא הנבחרים',
       bodyHTML: `<div class="space-y-2 max-h-[50vh] overflow-y-auto">${results.map((r, i) => `
-        <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3">
-          <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}">
+        <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3 ${isImported(r) ? 'opacity-60' : ''}">
+          <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}" ${isImported(r) ? 'disabled' : ''}>
           <span class="min-w-0 text-sm">
-            <b class="block truncate">${r.mailbox === 'partner' ? `<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle" dir="ltr">${UI.esc(partnerEmail || 'התיבה של בן/בת הזוג')}</span>` : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
+            <b class="block truncate">${isImported(r) ? '<span class="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full ml-1 align-middle">כבר יובא</span>' : ''}${r.mailbox === 'partner' ? `<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle" dir="ltr">${UI.esc(partnerEmail || 'התיבה של בן/בת הזוג')}</span>` : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
             <span class="block text-xs text-slate-400 truncate">${UI.esc(r.from)}</span>
             <span class="block text-[11px] text-slate-400 mt-0.5">${UI.esc((r.snippet || '').slice(0, 90))}…</span>
           </span>
         </label>`).join('')}</div>`,
       onConfirm: async () => {
-        const picked = [...document.querySelectorAll('.em-check')].filter(c => c.checked).map(c => results[+c.dataset.i]);
-        if (!picked.length) throw new Error('לא נבחרו מיילים');
+        const picked = [...document.querySelectorAll('.em-check')].filter(c => c.checked && !c.disabled)
+          .map(c => results[+c.dataset.i]).filter(r => !isImported(r));
+        if (!picked.length) throw new Error('לא נבחרו מיילים חדשים');
         let files = 0;
         for (const r of picked) {
           const full = await G.gmail.getFull(r.id);
@@ -401,7 +402,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: att.filename, mimeType: att.mimeType, size: blob.size,
               blob, category: guessCategory(att.filename), source: 'email',
-              emailMeta: { subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
+              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
             }));
             files++;
           }
@@ -411,7 +412,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: `${(r.subject || 'email').slice(0, 60)}.html`, mimeType: 'text/html',
               size: blob.size, blob, category: 'other', source: 'email',
-              emailMeta: { subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
+              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
             }));
             files++;
           }

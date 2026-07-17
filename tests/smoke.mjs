@@ -30,6 +30,11 @@ const bridgeState = {
       date: '2026-07-02T09:00:00.000Z', text: 'Your reservation is confirmed', html: '<p>confirmed</p>',
       attachments: [],
     },
+    'msg-3': {
+      from: 'Airbnb <auto@airbnb.com>', subject: 'הזמנת דירה — כרתים',
+      date: '2026-07-04T12:00:00.000Z', text: 'הזמנה 555', html: '<p>555</p>',
+      attachments: [], labels: ['@Navigo'], labelOnly: true,
+    },
   },
 };
 const partnerState = {
@@ -109,9 +114,15 @@ function bridge(req, S = bridgeState, token = TOKEN) {
         return { ok: true, fileName: f.name, mimeType: f.mimeType, data: f.data };
       }
       case 'gmailSearch': {
-        const messages = Object.entries(S.messages).map(([id, m]) => ({
-          id, from: m.from, subject: m.subject, date: m.date, snippet: m.text.slice(0, 140),
-        }));
+        const wanted = req.label ? String(req.label).toLowerCase() : null;
+        const messages = Object.entries(S.messages)
+          .filter(([, m]) => wanted
+            ? (m.labels || []).some(l => l.toLowerCase().includes(wanted))
+            : !m.labelOnly)
+          .filter(([, m]) => (!req.after || m.date >= req.after) && (!req.before || m.date.slice(0, 10) <= req.before))
+          .map(([id, m]) => ({
+            id, from: m.from, subject: m.subject, date: m.date, snippet: m.text.slice(0, 140),
+          }));
         return { ok: true, messages };
       }
       case 'gmailGet': {
@@ -303,6 +314,26 @@ await test('שאילתת חיפוש: ברירת המחדל היא תווית Nav
   assert(q.includes('label:navigo'), 'label scan missing: ' + q);
   assert(!q.includes('OR'), 'label scan must not carry keywords: ' + q);
   assert(q.includes('after:2026/06/01') && q.includes('has:attachment'), 'filters missing: ' + q);
+});
+
+await test('סריקה לפי תווית: תופסת גם @Navigo, וכולל סינון תאריכים', async () => {
+  const results = await G.gmail.search('label:navigo', 25, { label: 'navigo' });
+  assert(results.some(r => r.subject.includes('כרתים')), '@Navigo-labeled mail missing');
+  assert(results.every(r => (r.subject || '').includes('כרתים')), 'label scan must return only labeled mails');
+  const none = await G.gmail.search('label:navigo', 25, { label: 'navigo', before: '2026-07-03' });
+  assert(!none.some(r => r.subject.includes('כרתים')), 'before-date filter ignored in label scan');
+});
+
+await test('אותו מייל בשתי התיבות — מיובא פעם אחת', async () => {
+  partnerState.messages['pmsg-dup'] = {
+    from: 'ELAL <no-reply@elal.co.il>', subject: 'אישור הזמנה — טיסה לאתונה',
+    date: '2026-07-01T10:00:00.000Z', text: 'קוד הזמנה ABC123', html: '<p>ABC123</p>', attachments: [],
+  };
+  const results = await G.gmail.search('anything');
+  delete partnerState.messages['pmsg-dup'];
+  const copies = results.filter(r => r.subject.includes('אתונה'));
+  assert(copies.length === 1, 'duplicate mail must collapse to one, got ' + copies.length);
+  assert(copies[0].mailbox === 'me', 'my mailbox copy must win over the partner copy');
 });
 
 await test('שאילתת חיפוש: מילות סינון-החוצה', async () => {

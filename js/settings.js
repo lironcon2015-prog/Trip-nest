@@ -58,7 +58,7 @@ const Settings = (() => {
       <!-- Email scan (Navigo label) -->
       <section class="tn-card">
         <h3 class="tn-card-title">${UI.icon('mail', 'w-[18px] h-[18px] text-indigo-500')} סריקת מייל — תווית Navigo</h3>
-        <p class="text-[11px] text-slate-400 leading-relaxed">הסריקה מביאה רק מיילים שסומנו ב-Gmail בתווית <b>Navigo</b> — בלי ניחושים ובלי זבל. איך מסמנים:</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">הסריקה מביאה רק מיילים שסומנו ב-Gmail בתווית שמכילה את המילה <b>Navigo</b> — גם ‎@Navigo וכדומה (דורש גשר v1.4.0+) — בלי ניחושים ובלי זבל. מייל שכבר יובא לא ייובא שוב. איך מסמנים:</p>
         <ul class="text-[11px] text-slate-400 leading-relaxed list-disc pr-4 mt-1.5 space-y-1">
           <li><b>ידנית</b>: פתיחת המייל ב-Gmail ← תפריט ⋮ ← "שינוי תוויות" ← Navigo (יוצרים את התווית בפעם הראשונה).</li>
           <li><b>אוטומטית</b>: ב-Gmail — חיפוש שולח קבוע (למשל Booking או חברת תעופה) ← "יצירת פילטר" ← "החלת התווית Navigo". מאותו רגע כל מייל כזה מסומן לבד.</li>

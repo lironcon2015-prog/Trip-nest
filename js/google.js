@@ -227,13 +227,15 @@ const G = (() => {
         ? { id: String(id).slice(2), account: 'partner' }
         : { id, account: 'me' };
     },
-    async search(q, max = 25) {
+    // extra.label (bridge >= 1.4.0) matches any Gmail label containing the word,
+    // e.g. '@Navigo'; older bridges ignore it and fall back to the q string
+    async search(q, max = 25, extra = {}) {
       const jobs = [
-        call('gmailSearch', { q, max })
+        call('gmailSearch', { q, max, ...extra })
           .then(out => (out.messages || []).map(m => ({ ...m, mailbox: 'me' }))),
       ];
       if (await hasPartnerBridge()) {
-        jobs.push(call('gmailSearch', { q, max }, { account: 'partner' })
+        jobs.push(call('gmailSearch', { q, max, ...extra }, { account: 'partner' })
           .then(out => (out.messages || []).map(m => ({ ...m, id: 'p:' + m.id, mailbox: 'partner' })))
           .catch(e => {
             console.warn('partner mailbox scan failed', e);
@@ -242,7 +244,15 @@ const G = (() => {
           }));
       }
       const results = (await Promise.all(jobs)).flat();
-      return results.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      // the same mail often sits in both mailboxes (both recipients / forwarded) —
+      // keep a single copy, preferring my own mailbox
+      const seen = new Map();
+      for (const m of results) {
+        const key = `${(m.subject || '').trim()}|${(m.date || '').slice(0, 16)}`;
+        const cur = seen.get(key);
+        if (!cur || (cur.mailbox === 'partner' && m.mailbox === 'me')) seen.set(key, m);
+      }
+      return [...seen.values()].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     },
     // הגשר כבר מפרק את המייל — payload הוא { text, html, attachments }
     async getFull(id) {
