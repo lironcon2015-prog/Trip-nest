@@ -105,6 +105,8 @@ svg.tn-ico { display: inline-block; vertical-align: -0.22em; flex: none; }
 
 /* agent chat */
 #agent-log { display: flex; flex-direction: column; gap: 10px; }
+/* body is select-none (app-like feel) — chat bubbles must stay copyable */
+#agent-log > div { -webkit-user-select: text; user-select: text; }
 
 /* app shell — the page itself never scrolls (so the bottom nav stays put on iOS
    instead of riding the browser toolbar); #app-scroll is the single scroll area */
