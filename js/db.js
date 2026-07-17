@@ -4,7 +4,10 @@ const DB = (() => {
   const NAME = 'TripNestDB';
   const VERSION = 2;
   const SYNC_STORES = ['trips', 'documents', 'events', 'checklists', 'expenses', 'members'];
-  const SHARED_SETTINGS = ['keywords', 'negKeywords', 'agentPersona', 'agentHistory', 'agentNotes', 'agentTripSummaries', 'foodProfile', 'foodFavorites'];
+  // agentHistory (the live chat window) is deliberately NOT here: conversations stay
+  // per-device. Shared memory (notes, trip summaries, persona) and the Drive chat
+  // archive still give both partners' agents access to what was learned.
+  const SHARED_SETTINGS = ['keywords', 'negKeywords', 'agentPersona', 'agentNotes', 'agentTripSummaries', 'foodProfile', 'foodFavorites'];
   let _db = null;
 
   function open() {
