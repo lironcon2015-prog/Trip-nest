@@ -110,10 +110,15 @@ const Vault = (() => {
      a member selector (best match preselected), and nothing is saved before the
      user confirms, so existing members are never recreated behind their back. */
   function newFromPassport() {
+    document.getElementById('tn-vault-input')?.remove();
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    // attached to the DOM — iOS Safari can GC a detached input before 'change' fires
+    input.id = 'tn-vault-input'; input.style.display = 'none';
+    document.body.appendChild(input);
     input.addEventListener('change', async () => {
       const files = [...input.files];
+      input.remove();
       if (!files.length) return;
       if (files.length === 1) {
         const f = files[0];
@@ -196,11 +201,16 @@ const Vault = (() => {
   }
 
   function capture(memberId) {
+    document.getElementById('tn-vault-input')?.remove();
     const input = document.createElement('input');
     // no `capture` attribute — the OS offers both camera and photo/file upload
     input.type = 'file'; input.accept = 'image/*';
+    // attached to the DOM — iOS Safari can GC a detached input before 'change' fires
+    input.id = 'tn-vault-input'; input.style.display = 'none';
+    document.body.appendChild(input);
     input.addEventListener('change', () => {
       const f = input.files[0];
+      input.remove();
       if (!f) return;
       UI.openModal({
         title: 'שמירת צילום דרכון',
