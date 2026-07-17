@@ -201,7 +201,7 @@ const Members = (() => {
             </button>
             <input type="file" id="mf-avatar" accept="image/*" class="hidden">
           </div>
-          <p class="text-center text-xs text-slate-400">אוואטאר (אפשר להכין עם Gemini ולהעלות כאן)</p>
+          <p class="text-center text-xs text-slate-400">אוואטאר — אחרי בחירת תמונה אפשר למקם ולהגדיל בתוך העיגול</p>
           <div><label class="tn-label">שם בעברית *</label><input id="mf-name-he" class="tn-input" value="${UI.esc(m?.nameHe || '')}"></div>
           <div><label class="tn-label">שם באנגלית (כמו בדרכון)</label><input id="mf-name-en" class="tn-input" dir="ltr" value="${UI.esc(m?.nameEn || '')}"></div>
           <div><label class="tn-label">תאריך לידה</label><input id="mf-birth" type="date" class="tn-input" value="${m?.birthDate || ''}"></div>
@@ -223,8 +223,11 @@ const Members = (() => {
     document.getElementById('mf-avatar-btn').addEventListener('click', () => document.getElementById('mf-avatar').click());
     document.getElementById('mf-avatar').addEventListener('change', async (e) => {
       const f = e.target.files[0];
+      e.target.value = '';   // allow re-picking the same file
       if (!f) return;
-      avatar = await UI.fileToDataURL(f, 256);
+      const cropped = await UI.cropAvatar(f);
+      if (!cropped) return;  // crop canceled — keep the current avatar
+      avatar = cropped;
       document.getElementById('mf-avatar-preview').innerHTML = `<img src="${avatar}" class="w-20 h-20 rounded-full object-cover ring-1 ring-slate-200">`;
     });
   }

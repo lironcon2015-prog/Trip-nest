@@ -156,6 +156,94 @@ const UI = (() => {
     });
   }
 
+  /* circular avatar cropper — drag to position, pinch/wheel/slider to zoom.
+     The chosen framing is baked into a square JPEG data URL (resolves null on cancel),
+     so stored avatars stay plain data URLs and every render site works unchanged. */
+  function cropAvatar(file, outSize = 256) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      const done = (result) => { URL.revokeObjectURL(url); el?.remove(); resolve(result); };
+      let el = null;
+      img.onerror = () => done(null);
+      img.onload = () => {
+        const W = img.naturalWidth, H = img.naturalHeight;
+        const D = Math.min(280, window.innerWidth - 64); // on-screen circle diameter
+        const base = D / Math.min(W, H);                 // z=1 ⇒ image covers the circle
+        let z = 1, ox = 0, oy = 0;
+
+        el = document.createElement('div');
+        el.className = 'fixed inset-0 z-[90] bg-slate-900/95 flex flex-col items-center justify-center px-6';
+        el.innerHTML = `
+          <div class="text-white/90 text-sm font-medium mb-4">גררו למיקום · צבטו או הזיזו את הסליידר לזום</div>
+          <div id="av-box" class="relative overflow-hidden rounded-3xl touch-none" style="width:${D}px;height:${D}px">
+            <img id="av-img" src="${url}" class="absolute max-w-none pointer-events-none" draggable="false">
+            <div class="absolute inset-0 rounded-full pointer-events-none" style="box-shadow:0 0 0 9999px rgb(15 23 42 / .6)"></div>
+            <div class="absolute inset-0 rounded-full ring-2 ring-white/90 pointer-events-none"></div>
+          </div>
+          <input id="av-zoom" type="range" min="1" max="4" step="0.01" value="1" class="w-56 mt-6 accent-indigo-500" dir="ltr">
+          <div class="flex gap-3 mt-6 w-full max-w-xs">
+            <button id="av-ok" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-medium active:scale-95">✓ אישור</button>
+            <button id="av-cancel" class="flex-1 bg-white/10 text-white py-2.5 rounded-xl text-sm font-medium ring-1 ring-white/25 active:scale-95">✗ ביטול</button>
+          </div>`;
+        document.body.appendChild(el);
+        const box = el.querySelector('#av-box'), imgEl = el.querySelector('#av-img'), slider = el.querySelector('#av-zoom');
+
+        const apply = () => {
+          const s = base * z;
+          const maxX = (W * s - D) / 2, maxY = (H * s - D) / 2;   // image must keep covering the circle
+          ox = Math.max(-maxX, Math.min(maxX, ox));
+          oy = Math.max(-maxY, Math.min(maxY, oy));
+          imgEl.style.width = W * s + 'px';
+          imgEl.style.height = H * s + 'px';
+          imgEl.style.left = (D / 2 - W * s / 2 + ox) + 'px';
+          imgEl.style.top = (D / 2 - H * s / 2 + oy) + 'px';
+        };
+        const setZoom = (nz) => {
+          const prev = z;
+          z = Math.max(1, Math.min(4, nz));
+          ox *= z / prev; oy *= z / prev;                          // zoom around the circle center
+          slider.value = z;
+          apply();
+        };
+        apply();
+
+        const pts = new Map();
+        let lastDist = 0;
+        const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+        box.addEventListener('pointerdown', (e) => {
+          box.setPointerCapture(e.pointerId);
+          pts.set(e.pointerId, [e.clientX, e.clientY]);
+          if (pts.size === 2) lastDist = dist();
+        });
+        box.addEventListener('pointermove', (e) => {
+          if (!pts.has(e.pointerId)) return;
+          const [px, py] = pts.get(e.pointerId);
+          pts.set(e.pointerId, [e.clientX, e.clientY]);
+          if (pts.size === 1) { ox += e.clientX - px; oy += e.clientY - py; apply(); }
+          else if (pts.size === 2 && lastDist) { const d = dist(); setZoom(z * d / lastDist); lastDist = d; }
+        });
+        const lift = (e) => { pts.delete(e.pointerId); lastDist = 0; };
+        box.addEventListener('pointerup', lift);
+        box.addEventListener('pointercancel', lift);
+        box.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(z * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
+        slider.addEventListener('input', () => setZoom(parseFloat(slider.value)));
+
+        el.querySelector('#av-cancel').addEventListener('click', () => done(null));
+        el.querySelector('#av-ok').addEventListener('click', () => {
+          const s = base * z;
+          const c = document.createElement('canvas');
+          c.width = c.height = outSize;
+          c.getContext('2d').drawImage(img,
+            (W * s / 2 - D / 2 - ox) / s, (H * s / 2 - D / 2 - oy) / s, D / s, D / s,
+            0, 0, outSize, outSize);
+          done(c.toDataURL('image/jpeg', 0.85));
+        });
+      };
+      img.src = url;
+    });
+  }
+
   const avatarHTML = (m, size = 'w-14 h-14', extra = '') => m.avatar
     ? `<img src="${m.avatar}" alt="${esc(m.nameHe)}" class="${size} rounded-full object-cover ring-1 ring-slate-200 ${extra}">`
     : `<div class="${size} rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center font-bold ring-1 ring-slate-200 ${extra}">${esc((m.nameHe || '?').slice(0, 2))}</div>`;
@@ -337,7 +425,7 @@ const UI = (() => {
   return {
     esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText,
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
-    fileToDataURL, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
+    fileToDataURL, cropAvatar, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, MONTHS_S, init, icon, ICONS,
     EXPENSE_CATEGORIES, expCat, CURRENCIES, normCur, toILS, expenseTotals,
   };
