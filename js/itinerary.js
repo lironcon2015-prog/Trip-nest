@@ -45,6 +45,8 @@ const Itinerary = (() => {
     const events = (await DB.byTrip('events', trip.id));
     const expByEvent = {};
     (await DB.byTrip('expenses', trip.id)).forEach(x => { if (x.eventId) expByEvent[x.eventId] = x; });
+    const docById = {};
+    (await DB.byTrip('documents', trip.id)).forEach(d => { if (d.extracted) docById[d.id] = d; });
     const all = [...events, ...computedDeadlines(events)]
       .sort((a, b) => (a.date + (a.time || '99:99')).localeCompare(b.date + (b.time || '99:99')));
 
@@ -94,7 +96,7 @@ const Itinerary = (() => {
           })()}</span>
         </div>
         <div class="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          ${evs.map((e, i) => eventCard(e, i === evs.length - 1, expByEvent[e.id])).join('')}
+          ${evs.map((e, i) => eventCard(e, i === evs.length - 1, expByEvent[e.id], docById[e.docId])).join('')}
         </div>
       </div>`;
     }).join('') + `</div>
@@ -159,9 +161,35 @@ const Itinerary = (() => {
       }));
   }
 
-  function eventCard(e, last = false, cost = null) {
+  // key facts from the linked document's extracted data, skipping what the
+  // title/notes already show — so the card surfaces flight no / PNR / address at a glance
+  function docDetailLine(e, doc) {
+    const x = doc?.extracted;
+    if (!x) return '';
+    const have = `${e.title || ''} ${e.notes || ''}`;
+    const parts = [];
+    const add = (v, ltr) => { if (v && !have.includes(v)) parts.push(ltr ? `<span dir="ltr">${UI.esc(v)}</span>` : UI.esc(v)); };
+    if (e.type === 'flight') {
+      const fs = x.flights || [];
+      const f = fs.find(f => f.depDate === e.date) || fs.find(f => f.arrDate === e.date) || fs[0];
+      if (f) {
+        add(f.flightNo, true);
+        add([f.from, f.to].filter(Boolean).join(' → '), true);
+        add(f.airline);
+        if (f.depTime && f.arrTime) add(`${f.depTime}–${f.arrTime}`, true);
+      }
+    } else {
+      add(x.provider);
+      add(x.address);
+    }
+    if (x.confirmation && !have.includes(x.confirmation)) parts.push(`<span dir="ltr">PNR ${UI.esc(x.confirmation)}</span>`);
+    return parts.join(' · ');
+  }
+
+  function eventCard(e, last = false, cost = null, doc = null) {
     const t = UI.eventType(e.type);
     const deadline = e.type === 'deadline' || e.isDeadline;
+    const detail = e.computed ? '' : docDetailLine(e, doc);
     const note = [e.notes ? UI.esc(e.notes) : '', e.computed ? 'תזכורת אוטומטית' : ''].filter(Boolean).join(' · ');
     return `
       <div class="flex gap-3">
@@ -172,7 +200,8 @@ const Itinerary = (() => {
         <div class="flex-1 min-w-0 ${last ? '' : 'pb-4'}">
           <div class="flex items-start justify-between gap-2">
             <button class="flex-1 min-w-0 text-right" ${e.computed ? `data-eventauto="${e.id}"` : `data-event="${e.id}"`}>
-              <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} truncate pt-0.5">${UI.esc(e.title)}</span>
+              <span class="block text-sm font-semibold ${deadline ? 'text-amber-700' : 'text-slate-800'} line-clamp-2 pt-0.5">${UI.esc(e.title)}</span>
+              ${detail ? `<span class="block text-[11px] text-slate-400 mt-0.5">${detail}</span>` : ''}
             </button>
             <span class="flex items-center gap-2 shrink-0">
               ${e.docId ? `<button class="text-slate-300 -mt-0.5" data-eventdoc="${e.docId}" title="פתיחת המסמך">${UI.icon('doc', 'w-[18px] h-[18px]')}</button>` : ''}
