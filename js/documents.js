@@ -275,6 +275,7 @@ const Documents = (() => {
       UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'נסו להרחיב את טווח התאריכים או להוסיף מילות מפתח בהגדרות') });
       return;
     }
+    const partnerEmail = await DB.settings.get('partnerEmail');
     UI.openModal({
       title: `נמצאו ${results.length} מיילים`,
       confirmLabel: 'ייבוא הנבחרים',
@@ -282,7 +283,7 @@ const Documents = (() => {
         <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3">
           <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}">
           <span class="min-w-0 text-sm">
-            <b class="block truncate">${r.mailbox === 'partner' ? '<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle">התיבה של בן/בת הזוג</span>' : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
+            <b class="block truncate">${r.mailbox === 'partner' ? `<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle" dir="ltr">${UI.esc(partnerEmail || 'התיבה של בן/בת הזוג')}</span>` : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
             <span class="block text-xs text-slate-400 truncate">${UI.esc(r.from)}</span>
             <span class="block text-[11px] text-slate-400 mt-0.5">${UI.esc((r.snippet || '').slice(0, 90))}…</span>
           </span>

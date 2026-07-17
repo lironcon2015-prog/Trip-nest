@@ -106,10 +106,11 @@ const Settings = (() => {
         <h3 class="tn-card-title">${UI.icon('lock', 'w-[18px] h-[18px] text-indigo-500')} פרטיות וגיבוי</h3>
         <div class="space-y-2">
           <button id="st-vault-pin" class="tn-menu-btn">${UI.icon('key', 'w-4 h-4')} קוד גישה לכספת הדרכונים</button>
-          <button id="st-export" class="tn-menu-btn">${UI.icon('download', 'w-4 h-4')} ייצוא גיבוי מקומי (JSON)</button>
-          <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי</button>
+          <button id="st-export" class="tn-menu-btn">${UI.icon('download', 'w-4 h-4')} ייצוא גיבוי מלא (JSON)</button>
+          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} קובץ חיבור לבן/בת הזוג</button>
+          <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי / קובץ חיבור</button>
           <input type="file" id="st-import-file" accept="application/json" class="hidden">
-          <p class="text-[11px] text-slate-400">צילומי הדרכון לא נכללים בגיבוי — הם לא עוזבים את המכשיר.</p>
+          <p class="text-[11px] text-slate-400">הגיבוי המלא כולל את כל הנתונים וגם את החיבורים (טוקנים ומפתחות) — שמרו על הקובץ. צילומי הדרכון לא נכללים — הם לא עוזבים את המכשיר.</p>
         </div>
       </section>
 
@@ -143,6 +144,7 @@ const Settings = (() => {
       try {
         await saveBridgeInputs();
         const out = await G.ping({ account: 'partner' });
+        if (out.email) await DB.settings.set('partnerEmail', out.email);
         UI.toast(`התיבה השנייה מחוברת ✓ ${out.email || ''}`, 'success');
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
@@ -269,23 +271,53 @@ const Settings = (() => {
 
     /* vault + backup */
     document.getElementById('st-vault-pin').addEventListener('click', Vault.setPin);
-    document.getElementById('st-export').addEventListener('click', async () => {
-      const data = await DB.exportBackup();
+    const download = (data, name) => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-      a.download = `tripnest-backup-${UI.todayISO()}.json`;
+      a.download = name;
       a.click();
+    };
+    document.getElementById('st-export').addEventListener('click', async () => {
+      download(await DB.exportBackup(), `navigo-backup-${UI.todayISO()}.json`);
       UI.toast('הגיבוי ירד ✓', 'success');
     });
+
+    // connection profile for the partner's device: roles swapped (their bridge becomes
+    // "mine", ours becomes "partner"), plus the shared folder and Gemini key. No data —
+    // everything else arrives on their first Drive sync.
+    document.getElementById('st-export-partner').addEventListener('click', async (e) => UI.busy(e.currentTarget, async () => {
+      const [bu, bt, pu, pt, fid, fname, gk, gm] = await Promise.all([
+        DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
+        DB.settings.get('partnerBridgeUrl'), DB.settings.get('partnerBridgeToken'),
+        DB.settings.get('driveFolderId'), DB.settings.get('driveFolderName'),
+        DB.settings.get('geminiKey'), DB.settings.get('geminiModels'),
+      ]);
+      if (!pu || !pt) { UI.toast('קודם הגדירו את הגשר של בן/בת הזוג — הוא יהיה הגשר הראשי אצלו/אצלה', 'warning'); return; }
+      let myEmail = null;
+      try { myEmail = (await G.ping()).email || null; } catch { }
+      download({
+        app: 'TripNest', version: 2, type: 'partner-profile', exported: new Date().toISOString(),
+        settingsLocal: {
+          bridgeUrl: pu, bridgeToken: pt,
+          partnerBridgeUrl: bu, partnerBridgeToken: bt, partnerEmail: myEmail,
+          driveFolderId: fid, driveFolderName: fname,
+          geminiKey: gk, geminiModels: gm,
+        },
+      }, `navigo-partner-${UI.todayISO()}.json`);
+      UI.toast('קובץ החיבור ירד ✓ שלחו אותו לבן/בת הזוג', 'success');
+    }));
+
     document.getElementById('st-import').addEventListener('click', () => document.getElementById('st-import-file').click());
     document.getElementById('st-import-file').addEventListener('change', (e) => {
       const f = e.target.files[0];
       if (!f) return;
-      UI.confirm('לשחזר מהגיבוי? נתונים חדשים יותר באפליקציה יישמרו, נתונים חסרים יתווספו.', async () => {
+      UI.confirm('לשחזר מהקובץ? נתונים חדשים יותר באפליקציה יישמרו, נתונים חסרים יתווספו.', async () => {
         await DB.importBackup(JSON.parse(await f.text()));
-        UI.toast('הגיבוי שוחזר ✓', 'success');
+        UI.toast('שוחזר ✓', 'success');
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
         render();
+        // a connection profile / full backup restores the bridge+folder — pull the shared data now
+        if (await DB.settings.get('driveFolderId')) G.Sync.run({ silent: true });
       });
     });
   }

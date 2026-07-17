@@ -147,8 +147,11 @@ const DB = (() => {
   });
   async function dataURLToBlob(du) { return (await fetch(du)).blob(); }
 
+  // transient keys that make no sense on another install; shared keys are exported separately
+  const BACKUP_SETTINGS_SKIP = ['lastSync', 'sharedUpdatedAt', ...SHARED_SETTINGS];
+
   async function exportBackup() {
-    const out = { app: 'TripNest', version: 1, exported: new Date().toISOString() };
+    const out = { app: 'TripNest', version: 2, exported: new Date().toISOString() };
     for (const st of SYNC_STORES) {
       const recs = await allRaw(st);
       out[st] = await Promise.all(recs.map(async r => {
@@ -158,6 +161,11 @@ const DB = (() => {
     }
     out.settingsShared = {};
     for (const k of SHARED_SETTINGS) out.settingsShared[k] = await settings.get(k);
+    // device-local settings (bridges, tokens, Drive folder, Gemini key, vault PIN) —
+    // included so a restore brings the app up fully connected, no re-setup
+    out.settingsLocal = {};
+    for (const r of await allRaw('settings'))
+      if (!BACKUP_SETTINGS_SKIP.includes(r.key)) out.settingsLocal[r.key] = r.value;
     return out;
   }
 
@@ -171,6 +179,7 @@ const DB = (() => {
       }
     }
     for (const [k, v] of Object.entries(data.settingsShared || {})) if (v != null) await settings.set(k, v);
+    for (const [k, v] of Object.entries(data.settingsLocal || {})) if (v != null) await settings.set(k, v);
     await touchShared();
   }
 
