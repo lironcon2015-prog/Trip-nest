@@ -9,24 +9,25 @@ const Trips = (() => {
   /* ---------- trip type ---------- */
   // each type carries a Hebrew hint describing its character, injected into the agent context
   const TRIP_TYPES = {
-    family:   { label: 'משפחתית', emoji: '👨‍👩‍👧‍👦', hint: 'טיול משפחתי עם ילדים — קצב מותאם, אטרקציות ידידותיות לילדים, הפסקות מנוחה ואוכל שמתאים לכל הגילאים' },
+    family:   { label: 'משפחתית', emoji: '👨‍👩‍👧‍👦', hint: 'טיול משפחתי — קצב שמתאים לכולם, הפסקות מנוחה ואוכל לכל הגילאים; אם נוסעים ילדים — אטרקציות ידידותיות לילדים' },
     couple:   { label: 'זוגית', emoji: '💑', hint: 'חופשה זוגית — אווירה רומנטית, מסעדות טובות, חוויות משותפות, ללא אילוצי ילדים' },
     solo:     { label: 'אישית', emoji: '🚶', hint: 'נסיעה אישית של נוסע יחיד — גמישות מלאה והתאמה להעדפות הנוסע בלבד' },
     business: { label: 'עסקית', emoji: '💼', hint: 'נסיעת עבודה — לו״ז יעיל סביב פגישות, שמירת קבלות להחזר הוצאות, המלצות פרקטיות' },
     friends:  { label: 'חברים/גיבוש', emoji: '🎉', hint: 'נסיעת חברים או גיבוש — פעילויות קבוצתיות, תיאום בין משתתפים וחלוקת הוצאות הוגנת' },
   };
 
-  // manual override (trip.tripType) wins; otherwise inferred from the travelers:
-  // a known minor → family, 1 → solo, 2 adults → couple, 3+ adults → friends/group
+  // manual override (trip.tripType) wins. Auto-detection sees only family members
+  // (outsiders never appear in the app), so it can infer solo/couple/family only:
+  // a known minor or 3+ travelers → family, 1 → solo, 2 adults → couple.
+  // business/friends carry no participant signal — manual selection only.
   function tripType(trip, members) {
     if (trip.tripType && TRIP_TYPES[trip.tripType]) return { key: trip.tripType, auto: false, ...TRIP_TYPES[trip.tripType] };
     const travelers = (trip.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean);
     if (!travelers.length) return null;
     const ages = travelers.map(m => UI.age(m.birthDate));
-    const key = ages.some(a => a != null && a < 18) ? 'family'
+    const key = ages.some(a => a != null && a < 18) || travelers.length >= 3 ? 'family'
       : travelers.length === 1 ? 'solo'
-      : travelers.length === 2 ? 'couple'
-      : 'friends';
+      : 'couple';
     return { key, auto: true, ...TRIP_TYPES[key] };
   }
 
