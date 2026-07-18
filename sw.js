@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.38.1';
+const CACHE_VERSION = '1.38.2';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -7,6 +7,14 @@ const CORE = [
   './js/db.js', './js/ui.js', './js/gemini.js', './js/mrz.js', './js/google.js', './js/archive.js', './js/members.js', './js/vault.js',
   './js/documents.js', './js/food.js', './js/itinerary.js', './js/trips.js', './js/agent.js', './js/settings.js', './js/app.js',
   './icons/icon-192.png', './icons/icon-512.png',
+  // pdf.js is self-hosted and precached so tickets open with no signal; the
+  // worker and substitute fonts load lazily, so runtime caching isn't enough
+  './lib/pdfjs/pdf.min.js', './lib/pdfjs/pdf.worker.min.js',
+  ...['FoxitDingbats', 'FoxitFixed', 'FoxitFixedBold', 'FoxitFixedBoldItalic', 'FoxitFixedItalic',
+    'FoxitSerif', 'FoxitSerifBold', 'FoxitSerifBoldItalic', 'FoxitSerifItalic', 'FoxitSymbol']
+    .map(f => `./lib/pdfjs/standard_fonts/${f}.pfb`),
+  ...['Regular', 'Bold', 'Italic', 'BoldItalic'].map(f => `./lib/pdfjs/standard_fonts/LiberationSans-${f}.ttf`),
+  // cmaps (CJK PDFs) are rare — served same-origin and runtime-cached on first use
 ];
 
 // hosts that must never be cached (bridge, APIs)

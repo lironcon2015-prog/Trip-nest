@@ -303,6 +303,7 @@ const UI = (() => {
   const EXT_MIME = {
     pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
     gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', html: 'text/html', htm: 'text/html',
+    eml: 'message/rfc822',
   };
   function docMime(doc, blob = doc.blob) {
     let mt = (doc.mimeType || blob?.type || '').split(';')[0].trim().toLowerCase();
@@ -344,6 +345,8 @@ const UI = (() => {
       } else if (mt.startsWith('text/')) {
         const url = URL.createObjectURL(blob);
         body.innerHTML = `<iframe src="${url}" sandbox="" class="w-full bg-white rounded-xl" style="height:75vh"></iframe>`;
+      } else if (mt === 'message/rfc822') {
+        await renderEml(blob, body);
       } else {
         body.innerHTML = emptyState('doc', 'לא ניתן להציג קובץ מסוג זה', 'ניתן להוריד אותו בכפתור למעלה');
       }
@@ -355,12 +358,99 @@ const UI = (() => {
     },
   };
 
+  /* --- minimal .eml (message/rfc822) rendering --- */
+  // The raw bytes are decoded as latin1 (1:1 byte↔char) so the MIME structure
+  // can be walked as a string; each text part is then re-encoded and decoded
+  // with its declared charset. Attachments inside the message are not shown.
+  function emlSplit(raw) {
+    const m = /\r?\n\r?\n/.exec(raw);
+    const headers = {};
+    (m ? raw.slice(0, m.index) : raw).replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/).forEach(l => {
+      const i = l.indexOf(':');
+      if (i > 0) headers[l.slice(0, i).trim().toLowerCase()] = l.slice(i + 1).trim();
+    });
+    return { headers, body: m ? raw.slice(m.index + m[0].length) : '' };
+  }
+
+  function ctParam(ct, name) {
+    const m = new RegExp(name + '\\s*=\\s*(?:"([^"]*)"|([^;\\s]+))', 'i').exec(ct || '');
+    return m ? (m[1] ?? m[2]) : null;
+  }
+
+  function emlDecodeText(body, enc, charset) {
+    let bytes;
+    enc = (enc || '').trim().toLowerCase();
+    if (enc === 'base64') bytes = Uint8Array.from(atob(body.replace(/\s+/g, '')), c => c.charCodeAt(0));
+    else {
+      const s = enc === 'quoted-printable'
+        ? body.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        : body;
+      bytes = Uint8Array.from(s, c => c.charCodeAt(0) & 0xff);
+    }
+    try { return new TextDecoder(charset || 'utf-8').decode(bytes); }
+    catch { return new TextDecoder().decode(bytes); }
+  }
+
+  // RFC 2047 encoded-words in headers (=?charset?B/Q?...?=)
+  function emlHeaderText(v) {
+    return (v || '').replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (w, cs, enc, data) => {
+      try { return emlDecodeText(/b/i.test(enc) ? data : data.replace(/_/g, ' '), /b/i.test(enc) ? 'base64' : 'quoted-printable', cs); }
+      catch { return w; }
+    });
+  }
+
+  // best displayable part: html > plain, recursing into multiparts
+  function emlBestPart(raw) {
+    const { headers, body } = emlSplit(raw);
+    const ct = headers['content-type'] || 'text/plain';
+    const type = ct.split(';')[0].trim().toLowerCase();
+    if (type.startsWith('multipart/')) {
+      const boundary = ctParam(ct, 'boundary');
+      if (!boundary) return null;
+      const segs = raw.split('--' + boundary);
+      segs.shift(); // preamble is not a part
+      let best = null;
+      for (const seg of segs) {
+        if (seg.startsWith('--')) break; // closing boundary
+        const p = emlBestPart(seg.replace(/^\r?\n/, ''));
+        if (p && (!best || (p.type === 'text/html' && best.type !== 'text/html'))) best = p;
+      }
+      return best;
+    }
+    if (type === 'message/rfc822') return emlBestPart(body); // forwarded message
+    if (type !== 'text/html' && type !== 'text/plain') return null;
+    if (/attachment/i.test(headers['content-disposition'] || '')) return null;
+    return { type, text: emlDecodeText(body, headers['content-transfer-encoding'], ctParam(ct, 'charset')) };
+  }
+
+  async function renderEml(blob, container) {
+    try {
+      const raw = new TextDecoder('latin1').decode(new Uint8Array(await blob.arrayBuffer()));
+      const { headers } = emlSplit(raw);
+      const meta = [['מאת', headers.from], ['אל', headers.to], ['נושא', headers.subject], ['תאריך', headers.date]]
+        .filter(([, v]) => v)
+        .map(([k, v]) => `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">${k}:</span><span class="text-slate-700 break-all" dir="auto">${esc(emlHeaderText(v))}</span></div>`)
+        .join('');
+      const part = emlBestPart(raw);
+      const html = part
+        ? (part.type === 'text/html' ? part.text : `<pre style="white-space:pre-wrap;font-family:system-ui">${esc(part.text)}</pre>`)
+        : '<p>(אין תוכן להצגה)</p>';
+      const url = URL.createObjectURL(new Blob([`<meta charset="utf-8">${html}`], { type: 'text/html' }));
+      container.innerHTML = `
+        <div class="bg-white rounded-xl p-3.5 mb-3 space-y-1 shadow-sm">${meta}</div>
+        <iframe src="${url}" sandbox="" class="w-full bg-white rounded-xl" style="height:65vh"></iframe>`;
+    } catch (e) {
+      console.error(e);
+      container.innerHTML = emptyState('doc', 'שגיאה בפתיחת קובץ המייל');
+    }
+  }
+
   // PDFs with non-embedded fonts (e.g. bare Helvetica) render with missing
   // glyphs unless pdf.js is given its substitute font files; CJK/Hebrew CID
   // fonts likewise need the cMaps.
   const PDF_OPTS = {
-    standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/',
-    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+    standardFontDataUrl: 'lib/pdfjs/standard_fonts/',
+    cMapUrl: 'lib/pdfjs/cmaps/',
     cMapPacked: true,
   };
 
