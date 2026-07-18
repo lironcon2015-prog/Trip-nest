@@ -207,7 +207,7 @@ const Documents = (() => {
 
   /* --- extraction: passports locally (MRZ), everything else via Gemini --- */
   async function extractDoc(trip, doc, { silent = false } = {}) {
-    const mt = doc.mimeType || '';
+    const mt = UI.docMime(doc);
 
     // passports never reach Gemini: OCR the MRZ on-device. Images are always
     // sniffed first; a doc already categorized as passport (filename) stays

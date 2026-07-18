@@ -297,6 +297,20 @@ const UI = (() => {
     });
   }
 
+  // effective mime type of a stored document: normalize "type; params" and,
+  // when the recorded type is missing or generic (Gmail attachments often
+  // arrive as application/octet-stream), fall back to the file extension.
+  const EXT_MIME = {
+    pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', html: 'text/html', htm: 'text/html',
+  };
+  function docMime(doc, blob = doc.blob) {
+    let mt = (doc.mimeType || blob?.type || '').split(';')[0].trim().toLowerCase();
+    if (!mt || mt === 'application/octet-stream' || mt === 'binary/octet-stream')
+      mt = EXT_MIME[(doc.fileName || '').split('.').pop().toLowerCase()] || mt;
+    return mt;
+  }
+
   /* --- fullscreen document viewer --- */
   const viewer = {
     async open(doc) {
@@ -321,7 +335,7 @@ const UI = (() => {
         a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
       };
 
-      const mt = doc.mimeType || blob.type || '';
+      const mt = docMime(doc, blob);
       if (mt.startsWith('image/')) {
         const url = URL.createObjectURL(blob);
         body.innerHTML = `<img src="${url}" class="max-w-full mx-auto rounded-xl shadow-md">`;
@@ -423,7 +437,7 @@ const UI = (() => {
   }
 
   return {
-    esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText,
+    esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText, docMime,
     fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
     fileToDataURL, cropAvatar, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, MONTHS_S, init, icon, ICONS,
