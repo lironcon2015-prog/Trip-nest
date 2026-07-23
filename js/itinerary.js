@@ -17,7 +17,7 @@ const Itinerary = (() => {
         date: f.arrDate, time: f.arrTime || null, type: 'flight', title: `נחיתה ב${f.to || 'יעד'}`,
       });
     });
-    if (x.checkIn) push({ date: x.checkIn, type: 'checkin', title: `צ׳ק-אין: ${x.title || x.provider || 'מלון'}`, notes: x.address || '' });
+    if (x.checkIn) push({ date: x.checkIn, type: 'checkin', title: `צ׳ק-אין: ${x.title || x.provider || 'מלון'}`, notes: x.address || '', place: x.address || (x.title || x.provider || '') });
     if (x.checkOut) push({ date: x.checkOut, type: 'checkout', title: `צ׳ק-אאוט: ${x.title || x.provider || 'מלון'}` });
     (x.dates || []).forEach(d => push({ date: d.date, time: d.time || null, type: 'activity', title: d.label || x.title || 'אירוע' }));
     // dedupe against identical proposals
@@ -223,6 +223,7 @@ const Itinerary = (() => {
             </span>
           </div>
           ${note ? `<div class="bg-slate-50 rounded-lg px-3 py-2 text-[11px] ${deadline ? 'text-amber-600' : 'text-slate-500'} mt-1.5">${note}</div>` : ''}
+          ${e.place && !meal ? `<a target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 bg-indigo-50 rounded-lg px-2.5 py-1 mt-1.5" href="${Food.mapsURL(e.place)}" title="${UI.esc(e.place)}">${UI.icon('pin', 'w-3 h-3')} מפות</a>` : ''}
           ${meal && trip ? Food.mealActionsHTML(trip, e) : ''}
         </div>
       </div>`;
@@ -246,6 +247,7 @@ const Itinerary = (() => {
             <div class="col-span-2 min-w-0"><label class="tn-label">עלות (לא חובה)</label><input id="ev-cost" type="number" step="0.01" min="0" class="tn-input" dir="ltr" value="${linked?.amount ?? ''}" placeholder="נכנס לתקציב"></div>
             <div class="min-w-0"><label class="tn-label">מטבע</label><select id="ev-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(linked?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
           </div>
+          <div><label class="tn-label">מיקום (כפתור גוגל מפות)</label><input id="ev-place" class="tn-input" value="${UI.esc(ev?.place || '')}" placeholder="שם מקום או כתובת — ריק = בלי כפתור"></div>
           <div><label class="tn-label">הערות</label><input id="ev-notes" class="tn-input" value="${UI.esc(ev?.notes || '')}"></div>
           <label class="flex items-center gap-2 text-sm text-slate-600"><input id="ev-deadline" type="checkbox" class="accent-indigo-600 w-4 h-4" ${ev?.isDeadline ? 'checked' : ''}> מועד חשוב (מודגש)</label>
           ${ev ? `<button id="ev-delete" class="w-full py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-medium mt-1">${UI.icon('trash', 'w-4 h-4')} מחיקת האירוע</button>` : ''}
@@ -259,6 +261,7 @@ const Itinerary = (() => {
           time: document.getElementById('ev-time').value || null,
           type: document.getElementById('ev-type').value,
           notes: document.getElementById('ev-notes').value.trim(),
+          place: document.getElementById('ev-place').value.trim(),
           isDeadline: document.getElementById('ev-deadline').checked,
         });
         const amount = parseFloat(document.getElementById('ev-cost').value);

@@ -83,6 +83,7 @@ const Agent = (() => {
           notes: { type: 'STRING' }, isDeadline: { type: 'BOOLEAN' },
           mealSlot: { type: 'STRING', description: 'לאירועי אוכל: lunch|dinner' },
           area: { type: 'STRING', description: 'לאירועי אוכל: שכונה/כתובת' },
+          place: { type: 'STRING', description: 'מיקום לקישור גוגל מפות: שם המקום המדויק + עיר/יעד או כתובת מלאה. הזן כאן במקום להדביק קישור בהערות — האפליקציה בונה כפתור מפות דינמי מהשדה הזה.' },
           estCost: { type: 'NUMBER', description: 'לאירועי אוכל: עלות משוערת למשפחה' },
           estCur: { type: 'STRING', description: '₪|€|$|£' },
         },
@@ -97,6 +98,7 @@ const Agent = (() => {
         properties: {
           eventId: { type: 'STRING' }, date: { type: 'STRING' }, time: { type: 'STRING' },
           title: { type: 'STRING' }, notes: { type: 'STRING' },
+          place: { type: 'STRING', description: 'מיקום לקישור גוגל מפות: שם מקום מדויק + יעד או כתובת מלאה' },
         },
         required: ['eventId'],
       },
@@ -194,6 +196,7 @@ const Agent = (() => {
         const ev = await DB.put('events', {
           tripId: args.tripId, date: args.date, time: args.time || null, title: args.title,
           type: args.type || 'other', notes: args.notes || '', isDeadline: !!args.isDeadline,
+          ...(args.place ? { place: args.place } : {}),
           ...(args.type === 'food' && args.mealSlot ? {
             mealSlot: args.mealSlot, area: args.area || '',
             estCost: args.estCost > 0 ? args.estCost : null, estCur: args.estCur || '€',
@@ -205,7 +208,7 @@ const Agent = (() => {
       case 'update_event': {
         const ev = await DB.get('events', args.eventId);
         if (!ev) return { ok: false, error: 'event not found' };
-        ['date', 'time', 'title', 'notes'].forEach(k => { if (args[k] != null) ev[k] = args[k]; });
+        ['date', 'time', 'title', 'notes', 'place'].forEach(k => { if (args[k] != null) ev[k] = args[k]; });
         await DB.put('events', ev);
         return { ok: true };
       }
@@ -394,6 +397,7 @@ ${convo || '(אין)'}
         })),
         events: (await DB.byTrip('events', t.id)).map(e => ({
           id: e.id, date: e.date, time: e.time, title: e.title, type: e.type, isDeadline: e.isDeadline,
+          ...(e.place ? { place: e.place } : {}),
           ...(e.mealSlot ? { mealSlot: e.mealSlot, area: e.area, estCost: e.estCost, estCur: e.estCur, verified: !!e.verified } : {}),
         })),
         checklists: (await DB.byTrip('checklists', t.id)).map(l => ({
@@ -418,9 +422,10 @@ ${convo || '(אין)'}
 כשנשאל על דיון או החלטה ישנים שאינם בהקשר — חפש עם search_archive לפני שאתה עונה שאינך זוכר.`;
 
   const MAPS_RULES = `\n\n--- קישורי גוגל מפות ---
-כשאתה מזכיר מקום (מסעדה, אטרקציה, מלון, כתובת) או כשמבקשים ממך קישור — תמיד תן קישור דינמי לחיפוש בגוגל מפות בפורמט markdown:
+בטקסט צ'אט: כשאתה מזכיר מקום (מסעדה, אטרקציה, מלון, כתובת) או כשמבקשים ממך קישור — תמיד תן קישור דינמי לחיפוש בגוגל מפות בפורמט markdown:
 [שם המקום](https://www.google.com/maps/search/?api=1&query=שם+המקום+יעד)
-בנה את ה-query מהשם המדויק של המקום + עיר/יעד, עם + או רווחים בין המילים. קישור חיפוש כזה תמיד עובד ומוביל ישירות לגוגל מפות — אל תמציא place_id, קואורדינטות או קישור לדף מקום ספציפי שאינך בטוח בו. לעולם אל תכתוב כתובת URL כטקסט חשוף בלי לעטוף אותה בקישור markdown של [טקסט](כתובת).`;
+בנה את ה-query מהשם המדויק של המקום + עיר/יעד, עם + או רווחים בין המילים. קישור כזה תמיד עובד ומוביל ישירות לגוגל מפות — אל תמציא place_id, קואורדינטות או קישור לדף מקום ספציפי שאינך בטוח בו. לעולם אל תכתוב כתובת URL כטקסט חשוף בלי לעטוף אותה בקישור markdown של [טקסט](כתובת).
+באירועי ציר-הזמן (add_event/update_event): אל תדביק קישור או כתובת URL בשדה notes. במקום זה מלא את שדה place בשם המקום המדויק + יעד או בכתובת המלאה — האפליקציה בונה מזה כפתור "מפות" דינמי על האירוע. השאר את place ריק אם אין מיקום אמיתי, כדי שלא יופיע כפתור מיותר.`;
 
   async function systemPrompt() {
     const persona = (await DB.settings.get('agentPersona')) || DEFAULT_PERSONA;
