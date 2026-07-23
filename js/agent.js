@@ -417,13 +417,18 @@ ${convo || '(אין)'}
 שמירה: remember_note עם tripId לעובדה של טיול ספציפי, בלי tripId לזיכרון משפחה. מחיקה: forget_note.
 כשנשאל על דיון או החלטה ישנים שאינם בהקשר — חפש עם search_archive לפני שאתה עונה שאינך זוכר.`;
 
+  const MAPS_RULES = `\n\n--- קישורי גוגל מפות ---
+כשאתה מזכיר מקום (מסעדה, אטרקציה, מלון, כתובת) או כשמבקשים ממך קישור — תמיד תן קישור דינמי לחיפוש בגוגל מפות בפורמט markdown:
+[שם המקום](https://www.google.com/maps/search/?api=1&query=שם+המקום+יעד)
+בנה את ה-query מהשם המדויק של המקום + עיר/יעד, עם + או רווחים בין המילים. קישור חיפוש כזה תמיד עובד ומוביל ישירות לגוגל מפות — אל תמציא place_id, קואורדינטות או קישור לדף מקום ספציפי שאינך בטוח בו. לעולם אל תכתוב כתובת URL כטקסט חשוף בלי לעטוף אותה בקישור markdown של [טקסט](כתובת).`;
+
   async function systemPrompt() {
     const persona = (await DB.settings.get('agentPersona')) || DEFAULT_PERSONA;
     const family = ((await DB.settings.get('agentNotes')) || []).filter(n => !n.tripId);
     const memory = family.length
       ? `\n\n--- זיכרון המשפחה (עובדות רוחב ששמרת; פתקי טיול נמצאים בתוך כל טיול) ---\n${family.map(n => `[${n.id}] ${n.note}`).join('\n')}`
       : '';
-    return `${persona}${MEMORY_RULES}${memory}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
+    return `${persona}${MEMORY_RULES}${MAPS_RULES}${memory}\n\n--- נתוני האפליקציה (JSON) ---\n${JSON.stringify(await buildContext())}`;
   }
 
   /* --- UI --- */
@@ -529,7 +534,8 @@ ${convo || '(אין)'}
       ? 'self-start bg-indigo-600 text-white rounded-2xl rounded-tr-md px-4 py-2.5 text-sm max-w-[85%] whitespace-pre-wrap'
       : 'self-end bg-white text-slate-700 rounded-2xl rounded-tl-md px-4 py-2.5 text-sm max-w-[85%] shadow-sm whitespace-pre-wrap';
     el.innerHTML = html;
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;  // let links open instead of becoming a quote
       const t = el.textContent.trim();
       if (t) setQuote(t.slice(0, 200));
     });
@@ -540,7 +546,13 @@ ${convo || '(אין)'}
 
   const mdLite = (t) => UI.esc(t)
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/^\* /gm, '• ');
+    .replace(/^\* /gm, '• ')
+    // markdown links [text](url) → clickable, opens in a new tab
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener" class="text-indigo-600 underline">$1</a>')
+    // bare URLs not already wrapped in an anchor's href
+    .replace(/(^|[^"'>=])(https?:\/\/[^\s<]+)/g,
+      '$1<a href="$2" target="_blank" rel="noopener" class="text-indigo-600 underline">$2</a>');
 
   function approvalCard(calls) {
     return new Promise((resolve) => {
