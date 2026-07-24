@@ -61,7 +61,8 @@ const Trips = (() => {
         <div class="absolute bottom-0 right-0 left-0 p-4 flex items-end justify-between">
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
-            <div class="text-white/80 text-xs mt-0.5">${UI.esc(t.destination || '')}${t.destination && t.startDate ? ' · ' : ''}${UI.fmtDateRange(t.startDate, t.endDate)}${cost ? `<span dir="ltr"> · ${cost}</span>` : ''}</div>
+            <div class="text-white/80 text-xs mt-0.5">${UI.esc(t.destination || '')}${t.destination && t.startDate ? ' · ' : ''}${UI.fmtDateRange(t.startDate, t.endDate)}</div>
+            ${cost ? `<div class="text-white/80 text-xs mt-0.5" style="direction:ltr;text-align:right;unicode-bidi:isolate">${cost}</div>` : ''}
           </div>
           <div class="flex -space-x-2 space-x-reverse">${travelers.slice(0, 4).map(m => UI.avatarHTML(m, 'w-8 h-8', 'ring-2 ring-white/60')).join('')}</div>
         </div>
