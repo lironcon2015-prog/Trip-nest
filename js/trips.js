@@ -37,7 +37,6 @@ const Trips = (() => {
     const el = document.getElementById('trips-list');
     const trips = await DB.all('trips');
     const members = await DB.all('members');
-    const allExpenses = await DB.all('expenses');
     const today = UI.todayISO();
     const upcoming = trips.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
     const past = trips.filter(t => t.endDate && t.endDate < today).sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
@@ -46,9 +45,6 @@ const Trips = (() => {
       const travelers = Members.sorted((t.memberIds || []).map(id => members.find(m => m.id === id)).filter(Boolean));
       const tt = tripType(t, members);
       const du = t.startDate ? UI.daysUntil(t.startDate) : null;
-      const tx = UI.expenseTotals(allExpenses.filter(x => x.tripId === t.id), t.fxRates);
-      const cost = [tx.ils > 0 ? UI.fmtMoney(tx.ils) : '',
-        Object.entries(tx.leftover).map(([c, v]) => UI.fmtMoney(v, c)).join(' + ')].filter(Boolean).join(' + ');
       const pill = du === null ? '' : du > 0 ? `בעוד ${du} ימים` : (t.endDate && t.endDate >= today ? 'עכשיו בטיול ✈️' : 'הסתיים');
       return `
       <button class="trip-card w-full text-right relative min-h-[150px] rounded-[1.75rem] overflow-hidden shadow-lg active:scale-[0.98] transition" data-trip="${t.id}">
@@ -62,7 +58,6 @@ const Trips = (() => {
           <div>
             <div class="text-white text-xl font-bold">${UI.esc(t.name)}</div>
             <div class="text-white/80 text-xs mt-0.5">${UI.esc(t.destination || '')}${t.destination && t.startDate ? ' · ' : ''}${UI.fmtDateRange(t.startDate, t.endDate)}</div>
-            ${cost ? `<div class="text-white/80 text-xs mt-0.5" style="direction:ltr;text-align:right;unicode-bidi:isolate">${cost}</div>` : ''}
           </div>
           <div class="flex -space-x-2 space-x-reverse">${travelers.slice(0, 4).map(m => UI.avatarHTML(m, 'w-8 h-8', 'ring-2 ring-white/60')).join('')}</div>
         </div>
