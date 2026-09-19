@@ -534,5 +534,30 @@ await test('MRZ: איתור בתוך טקסט OCR מרובה שורות + תיק
   assert(p && p.birthDate === '1974-08-12' && p.expiryDate === '2012-04-15', 'fromText with O→0 fix failed');
 });
 
+/* --- currency conversion (js/ui.js helpers used by the FX converter) --- */
+const _uiStub = globalThis.UI;
+(0, eval)(readFileSync(join(root, 'js/ui.js'), 'utf-8'));
+const UIm = globalThis.UI;
+globalThis.UI = _uiStub; // keep the rest of the suite on its stub
+
+await test('המרה לשקלים: שער מוגדר, ₪ עובר כמו שהוא, וללא שער → null', async () => {
+  const rates = { '€': 4.1, '$': 3.7 };
+  assert(UIm.toILS(10, '€', rates) === 41, 'EUR 10 → 41 ILS expected');
+  assert(UIm.toILS(25, '₪', rates) === 25, 'ILS passes through');
+  assert(UIm.toILS(10, 'EUR', rates) === 41, 'alias EUR must normalize to €');
+  assert(UIm.toILS(10, '£', rates) === null, 'missing rate must yield null, never a guess');
+});
+
+await test('סיכום הוצאות: המיר נכנס לסה״כ, לא-המיר נשאר בנפרד', async () => {
+  const t = UIm.expenseTotals([
+    { amount: 100, currency: '₪', category: 'food' },
+    { amount: 10, currency: '€', category: 'food' },
+    { amount: 5, currency: '£', category: 'other' },
+  ], { '€': 4 });
+  assert(t.ils === 140, `expected 140 convertible ILS, got ${t.ils}`);
+  assert(t.byCat.food === 140 && !t.byCat.other, 'byCat must cover only convertible amounts');
+  assert(t.hasLeftover && t.leftover['£'] === 5, 'unconvertible £5 must stay in leftover');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

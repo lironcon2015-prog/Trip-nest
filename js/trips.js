@@ -399,7 +399,10 @@ const Trips = (() => {
             <div class="text-xs text-slate-400 mb-1">סה״כ הוצאות בטיול</div>
             <div class="text-2xl font-bold text-slate-800" dir="ltr">${[t.ils > 0 || !t.hasLeftover ? UI.fmtMoney(t.ils) : '', leftoverStr].filter(Boolean).join(' + ')}</div>
           </div>
-          <button id="bd-setup" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5 shrink-0">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
+          <div class="flex flex-col items-end gap-1.5 shrink-0">
+            <button id="bd-fx" class="flex items-center gap-1 text-xs text-indigo-600 font-medium bg-indigo-50 rounded-full px-3 py-1.5">${UI.icon('calc', 'w-3.5 h-3.5')} מחשבון המרה</button>
+            <button id="bd-setup" class="flex items-center gap-1 text-xs text-slate-500 font-medium bg-slate-100 rounded-full px-3 py-1.5">${UI.icon('sliders', 'w-3.5 h-3.5')} יעדים ושערים</button>
+          </div>
         </div>
         ${avgLine ? `<div class="text-[11px] text-slate-400 mt-0.5">${avgLine}</div>` : ''}
         ${t.hasLeftover ? '<div class="text-[11px] text-amber-600 mt-1">יש הוצאות במטבע ללא שער המרה — הגדירו שער ב"יעדים ושערים" לסיכום מלא</div>' : ''}
@@ -424,11 +427,16 @@ const Trips = (() => {
             <span class="block text-sm font-semibold text-slate-800 truncate">${UI.esc(x.title)}</span>
             <span class="block text-[11px] text-slate-400">${[x.date ? UI.fmtDateShort(x.date) : '', payer ? 'שילם/ה: ' + UI.esc(payer.nameHe) : '', x.docId ? 'ממסמך' : (x.eventId ? 'מהמסלול' : '')].filter(Boolean).join(' · ')}</span>
           </span>
-          <span class="font-bold text-slate-700 text-sm shrink-0" dir="ltr">${UI.fmtMoney(x.amount, UI.normCur(x.currency))}</span>
+          <span class="shrink-0 text-left">
+            <span class="block font-bold text-slate-700 text-sm" dir="ltr">${UI.fmtMoney(x.amount, UI.normCur(x.currency))}</span>
+            ${(() => { const ils = UI.normCur(x.currency) !== '₪' ? UI.toILS(x.amount, x.currency, trip.fxRates) : null;
+              return ils === null ? '' : `<span class="block text-[10px] text-slate-400" dir="ltr">≈ ${UI.fmtMoney(ils)}</span>`; })()}
+          </span>
         </button>`;
       }).join('')}</div>` : UI.emptyState('wallet', _expFilter ? 'אין הוצאות בקטגוריה הזו' : 'אין עדיין הוצאות', 'הוסיפו עם כפתור ה-+')}`;
 
     document.getElementById('bd-setup').addEventListener('click', () => budgetSetupModal(trip));
+    document.getElementById('bd-fx').addEventListener('click', () => FX.converterModal(trip));
     panel.querySelectorAll('.exp-filter').forEach(b => b.addEventListener('click', () => {
       _expFilter = b.dataset.cat; renderBudget(trip, panel);
     }));
@@ -494,6 +502,7 @@ const Trips = (() => {
             <div class="col-span-2"><label class="tn-label">סכום *</label><input id="xf-amount" type="number" step="0.01" min="0" class="tn-input" dir="ltr" value="${x?.amount ?? ''}"></div>
             <div><label class="tn-label">מטבע</label><select id="xf-cur" class="tn-input">${UI.CURRENCIES.map(c => `<option ${UI.normCur(x?.currency) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
           </div>
+          <div id="xf-ils" class="text-[11px] text-slate-400 -mt-1"></div>
           <div class="grid grid-cols-2 gap-3">
             <div class="min-w-0"><label class="tn-label">תאריך</label><input id="xf-date" type="date" class="tn-input" value="${x?.date || UI.todayISO()}"></div>
             <div class="min-w-0"><label class="tn-label">מי שילם/ה</label><select id="xf-payer" class="tn-input"><option value="">—</option>${members.map(m => `<option value="${m.id}" ${x?.payerId === m.id ? 'selected' : ''}>${UI.esc(m.nameHe)}</option>`).join('')}</select></div>
@@ -515,6 +524,21 @@ const Trips = (() => {
         document.dispatchEvent(new CustomEvent('tn-data-changed'));
       },
     });
+    // live shekel equivalent, so a foreign price is understood while it is typed
+    const xfIls = () => {
+      const cur = document.getElementById('xf-cur').value;
+      const amount = parseFloat(document.getElementById('xf-amount').value);
+      const el = document.getElementById('xf-ils');
+      if (cur === '₪' || !(amount > 0)) { el.textContent = ''; return; }
+      const ils = UI.toILS(amount, cur, trip.fxRates);
+      // no link to the converter here: opening it would replace this form and drop what was typed
+      el.innerHTML = ils === null
+        ? `אין שער המרה ל-${cur} — הגדירו אותו ב"מחשבון המרה"`
+        : `≈ <span dir="ltr">${UI.fmtMoney(ils)}</span>`;
+    };
+    document.getElementById('xf-amount').addEventListener('input', xfIls);
+    document.getElementById('xf-cur').addEventListener('change', xfIls);
+    xfIls();
     document.querySelectorAll('.xf-cat').forEach(b => b.addEventListener('click', () => {
       document.querySelectorAll('.xf-cat').forEach(o => o.classList.remove('xf-on', 'ring-2', 'ring-indigo-300'));
       b.classList.add('xf-on', 'ring-2', 'ring-indigo-300');
