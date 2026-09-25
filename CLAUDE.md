@@ -1,7 +1,8 @@
 # MANDATORY workflow
 
 **חובה בכל סשן ובכל תור**: עבוד לפי הסקיל `token-efficient-workflow`
-(`.claude/skills/token-efficient-workflow/SKILL.md`). הכללים המלאים נמצאים שם —
+(`.claude/skills/token-efficient-workflow/SKILL.md`), שמופעל בכל סשן דרך
+`.claude/hooks/session-start.sh`. הכללים המלאים נמצאים שם —
 החל אותם על כל תגובה (קריאות ממוקדות, אפס filler, edits כירורגיים, סיום
 שקט). אין להוריד את הסקיל הזה אלא אם המשתמש ביקש מפורשות לחרוג ממנו
 למשימה ספציפית.
