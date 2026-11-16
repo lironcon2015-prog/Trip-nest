@@ -260,14 +260,15 @@ const Trips = (() => {
     panel.querySelectorAll('.cl-item').forEach(c => c.addEventListener('change', async () => {
       const l = await DB.get('checklists', c.dataset.list);
       const it = l.items.find(i => i.id === c.dataset.item);
-      if (it) { it.done = c.checked; await DB.put('checklists', l); G.Sync.queue(); renderChecklist(trip, panel); }
+      // `u` stamps the item itself, so a partner's tick on another item merges in (js/merge.js)
+      if (it) { it.done = c.checked; it.u = Date.now(); await DB.put('checklists', l); G.Sync.queue(); renderChecklist(trip, panel); }
     }));
     panel.querySelectorAll('.cl-add-form').forEach(f => f.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = f.querySelector('input').value.trim();
       if (!text) return;
       const l = await DB.get('checklists', f.dataset.list);
-      l.items.push({ id: DB.uid(), text, done: false });
+      l.items.push({ id: DB.uid(), text, done: false, u: Date.now() });
       await DB.put('checklists', l); G.Sync.queue();
       renderChecklist(trip, panel);
     }));
@@ -291,11 +292,14 @@ const Trips = (() => {
         const text = document.getElementById('cli-text').value.trim();
         if (!text) throw new Error('חסר שם לפריט');
         it.text = text;
+        it.u = Date.now();
         await DB.put('checklists', l); G.Sync.queue();
         renderChecklist(trip, panel);
       },
     });
     document.getElementById('cli-delete').addEventListener('click', async () => {
+      // the removal leaves a stamp, or the partner's copy would bring the item back
+      l.removed = { ...(l.removed || {}), [itemId]: Date.now() };
       l.items = l.items.filter(i => i.id !== itemId);
       await DB.put('checklists', l); G.Sync.queue();
       UI.closeModal();

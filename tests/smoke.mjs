@@ -221,12 +221,14 @@ globalThis.DB = {
       const remoteIds = new Set(remoteRecs.map(r => r.id));
       for (const rr of remoteRecs) {
         const lr = localMap.get(rr.id);
-        if (!lr || (rr.updatedAt || 0) > (lr.updatedAt || 0)) {
-          const merged = { ...rr };
-          if (st === 'documents' && lr && lr.blob) merged.blob = lr.blob;
-          await this.putRaw(st, merged);
+        const merged = Merge.record(st, lr, rr);
+        if (!lr || !Merge.same(st, merged, lr)) {
+          const m = { ...merged };
+          if (st === 'documents' && lr && lr.blob) m.blob = lr.blob;
+          await this.putRaw(st, m);
           localChanged = true;
-        } else if ((lr.updatedAt || 0) > (rr.updatedAt || 0)) needUpload = true;
+        }
+        if (!Merge.same(st, merged, rr)) needUpload = true;
       }
       if (localRecs.some(r => !remoteIds.has(r.id))) needUpload = true;
     }
@@ -235,6 +237,8 @@ globalThis.DB = {
 };
 
 /* ---------- load the clients under test ---------- */
+(0, eval)(readFileSync(join(root, 'js/merge.js'), 'utf-8'));
+const Merge = globalThis.Merge;
 (0, eval)(readFileSync(join(root, 'js/google.js'), 'utf-8'));
 (0, eval)(readFileSync(join(root, 'js/gemini.js'), 'utf-8'));
 (0, eval)(readFileSync(join(root, 'js/mrz.js'), 'utf-8'));
@@ -609,6 +613,40 @@ await test('SW: עדכון גרסה שומר Tailwind/גופנים מהמטמו�
   assert(failed, 'install must fail when a core file is not OK');
   // fonts.googleapis.com is cacheable again (the bypass no longer swallows it)
   assert(!/const BYPASS = \[[^\]]*'googleapis\.com'/.test(src), 'bare googleapis.com must not be in BYPASS');
+});
+
+/* ---------- merge rules (js/merge.js — the server runs the same file) ---------- */
+await test('מיזוג: רשומה — updatedAt חדש מנצח, ובתיקו כל צד בוחר אותו מנצח', async () => {
+  const a = { id: 'e1', updatedAt: 5, title: 'A' }, b = { id: 'e1', updatedAt: 7, title: 'B' };
+  assert(Merge.record('events', a, b) === b && Merge.record('events', b, a) === b, 'newer must win both ways');
+  const t1 = { id: 'e2', updatedAt: 9, title: 'x' }, t2 = { id: 'e2', updatedAt: 9, title: 'y' };
+  assert(Merge.record('events', t1, t2) === Merge.record('events', t2, t1), 'a tie must resolve the same on every device');
+  const tomb = { id: 'e1', deleted: true, updatedAt: 8 };
+  assert(Merge.record('events', b, tomb) === tomb, 'a newer deletion wins');
+});
+
+await test('מיזוג: צ׳ק-ליסט — סימונים של שניכם נשמרים, פריט שהוסר לא חוזר', async () => {
+  const base = [{ id: 'i1', text: 'דרכונים', done: false, u: 1 }, { id: 'i2', text: 'מטען', done: false, u: 1 }, { id: 'i3', text: 'כובע', done: false, u: 1 }];
+  const mine = { id: 'L', tripId: 't', title: 'אריזה', updatedAt: 20, items: [{ ...base[0], done: true, u: 20 }, base[1], base[2]] };
+  const hers = { id: 'L', tripId: 't', title: 'אריזה', updatedAt: 25,
+    items: [base[0], { ...base[1], done: true, u: 25 }, { id: 'i4', text: 'מטריה', done: false, u: 24 }], removed: { i3: 23 } };
+  const m = Merge.record('checklists', mine, hers);
+  const byId = Object.fromEntries(m.items.map(i => [i.id, i]));
+  assert(byId.i1.done && byId.i2.done, 'both ticks must survive');
+  assert(byId.i4 && !byId.i3, 'her new item stays, her removal holds');
+  assert(m.updatedAt === 25, 'merged stamp = newest');
+  assert(Merge.same('checklists', m, Merge.record('checklists', hers, mine)), 'merge must be commutative');
+  assert(Merge.same('checklists', m, Merge.record('checklists', m, mine)), 'merge must be idempotent');
+  const edited = { ...hers, updatedAt: 30, items: [...hers.items, { id: 'i3', text: 'כובע', done: true, u: 30 }] };
+  assert(Merge.record('checklists', m, edited).items.some(i => i.id === 'i3'), 'an item changed after its removal comes back');
+});
+
+await test('מיזוג: רשימה ישנה (בלי u) וקובץ blob מקומי לא משבשים השוואה', async () => {
+  const legacy = { id: 'L2', updatedAt: 3, title: 'ישן', items: [{ id: 'a', text: 'x', done: false }] };
+  const newer = { id: 'L2', updatedAt: 4, title: 'ישן', items: [{ id: 'a', text: 'x', done: true, u: 4 }] };
+  assert(Merge.record('checklists', legacy, newer).items[0].done, 'a stamped change beats an unstamped item');
+  const blobDoc = { id: 'd', updatedAt: 2, fileName: 'f.pdf', blob: { size: 3 } };
+  assert(Merge.same('documents', blobDoc, { fileName: 'f.pdf', id: 'd', updatedAt: 2 }), 'blob and key order must not count');
 });
 
 /* ---------- MRZ (ICAO 9303 TD3 specimen) ---------- */

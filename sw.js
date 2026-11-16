@@ -1,10 +1,10 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.42.0';
+const CACHE_VERSION = '1.43.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
   './', './index.html', './css/style.css', './manifest.json', './version.json',
-  './js/db.js', './js/ui.js', './js/gemini.js', './js/mrz.js', './js/google.js', './js/archive.js', './js/members.js', './js/vault.js',
+  './js/merge.js', './js/db.js', './js/ui.js', './js/gemini.js', './js/mrz.js', './js/google.js', './js/archive.js', './js/members.js', './js/vault.js',
   './js/documents.js', './js/food.js', './js/itinerary.js', './js/fx.js', './js/trips.js', './js/agent.js', './js/settings.js', './js/app.js',
   './icons/icon-192.png', './icons/icon-512.png',
   // pdf.js is self-hosted and precached so tickets open with no signal; the

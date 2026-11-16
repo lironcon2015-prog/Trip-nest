@@ -364,18 +364,26 @@ const Documents = (() => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  // a Gmail id without its routing prefix: 'p:<id>' (old partner route) or '<mailbox>/<id>'
+  const rawMsgId = (id) => String(id).replace(/^p:/, '').replace(/^.*\//, '');
+
   async function showEmailResults(trip, results) {
     if (!results.length) {
       UI.openModal({ title: 'תוצאות סריקה', hideConfirm: true, bodyHTML: UI.emptyState('mail', 'לא נמצאו מיילים תואמים', 'ודאו שהמיילים מסומנים בתווית Navigo ב-Gmail, או נסו להרחיב את טווח התאריכים') });
       return;
     }
-    const partnerEmail = await DB.settings.get('partnerEmail');
+    const [partnerEmail, myEmail] = await Promise.all([DB.settings.get('partnerEmail'), DB.settings.get('myEmail')]);
     // a mail that already produced documents for this trip must not be pulled twice:
-    // match by message id (new imports) or subject+sender (older imports)
+    // match by the raw Gmail id (whichever phone imported it, under whichever
+    // prefix) or by subject+sender (older imports)
     const existing = (await DB.byTrip('documents', trip.id)).filter(d => d.emailMeta);
     const importedKeys = new Set(existing.flatMap(d =>
-      [d.emailMeta.msgId, `${d.emailMeta.subject}|${d.emailMeta.from}`].filter(Boolean)));
-    const isImported = (r) => importedKeys.has(r.id) || importedKeys.has(`${r.subject}|${r.from}`);
+      [d.emailMeta.msgId && rawMsgId(d.emailMeta.msgId), `${d.emailMeta.subject}|${d.emailMeta.from}`].filter(Boolean)));
+    const isImported = (r) => importedKeys.has(rawMsgId(r.id)) || importedKeys.has(`${r.subject}|${r.from}`);
+    // the mailbox as an address, the same on both phones ('me'/'partner' flip between them)
+    const mailboxOf = (r) => (String(r.mailbox || '').includes('@') ? r.mailbox
+      : r.mailbox === 'partner' ? (partnerEmail || 'partner') : (myEmail || 'me'));
+    const theirs = (r) => r.mailbox === 'partner' || (String(r.mailbox || '').includes('@') && r.mailbox !== myEmail);
     UI.openModal({
       title: `נמצאו ${results.length} מיילים`,
       confirmLabel: 'ייבוא הנבחרים',
@@ -383,7 +391,7 @@ const Documents = (() => {
         <label class="flex items-start gap-3 bg-slate-50 rounded-xl p-3 ${isImported(r) ? 'opacity-60' : ''}">
           <input type="checkbox" class="em-check accent-indigo-600 w-4 h-4 mt-1" data-i="${i}" ${isImported(r) ? 'disabled' : ''}>
           <span class="min-w-0 text-sm">
-            <b class="block truncate">${isImported(r) ? '<span class="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full ml-1 align-middle">כבר יובא</span>' : ''}${r.mailbox === 'partner' ? `<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle" dir="ltr">${UI.esc(partnerEmail || 'התיבה של בן/בת הזוג')}</span>` : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
+            <b class="block truncate">${isImported(r) ? '<span class="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full ml-1 align-middle">כבר יובא</span>' : ''}${theirs(r) ? `<span class="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full ml-1 align-middle" dir="ltr">${UI.esc(String(r.mailbox).includes('@') ? r.mailbox : (partnerEmail || 'התיבה של בן/בת הזוג'))}</span>` : ''}${r.attachments ? `<span class="text-[10px] text-slate-400 ml-1">${UI.icon('doc', 'w-3 h-3')}${r.attachments}</span>` : ''}${UI.esc(r.subject || '(ללא נושא)')}</b>
             <span class="block text-xs text-slate-400 truncate">${UI.esc(r.from)}</span>
             <span class="block text-[11px] text-slate-400 mt-0.5">${UI.esc((r.snippet || '').slice(0, 90))}…</span>
           </span>
@@ -402,7 +410,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: att.filename, mimeType: att.mimeType, size: blob.size,
               blob, category: guessCategory(att.filename), source: 'email',
-              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
+              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: mailboxOf(r) },
             }));
             files++;
           }
@@ -412,7 +420,7 @@ const Documents = (() => {
             newDocs.push(await DB.put('documents', {
               tripId: trip.id, fileName: `${(r.subject || 'email').slice(0, 60)}.html`, mimeType: 'text/html',
               size: blob.size, blob, category: 'other', source: 'email',
-              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: r.mailbox || 'me' },
+              emailMeta: { msgId: r.id, subject: r.subject, from: r.from, mailbox: mailboxOf(r) },
             }));
             files++;
           }

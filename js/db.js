@@ -1,8 +1,12 @@
 /* TripNest — IndexedDB layer.
-   Synced stores go to the shared Drive db.json; `vault` and `settings` never leave the device. */
+   Synced stores go to the server (or, before pairing, the shared Drive db.json);
+   `vault` and `settings` never leave the device. Every local write to a synced
+   store also lands in `outbox` in the same transaction — the sync engine pushes
+   exactly those, so a change can't be missed by a skewed clock. Records applied
+   from a sync go through putRaw and stay out of the outbox. */
 const DB = (() => {
   const NAME = 'TripNestDB';
-  const VERSION = 2;
+  const VERSION = 3;
   const SYNC_STORES = ['trips', 'documents', 'events', 'checklists', 'expenses', 'members'];
   // agentHistory (the live chat window) is deliberately NOT here: conversations stay
   // per-device. Shared memory (notes, trip summaries, persona) and the Drive chat
@@ -30,8 +34,14 @@ const DB = (() => {
         mk('vault', { keyPath: 'id' }, ['memberId']);
         mk('settings', { keyPath: 'key' });
         mk('archive', { keyPath: 'id' }, ['tripId']); // chat archive (v2), Drive-mirrored separately from db.json
+        mk('outbox', { keyPath: 'k' });               // v3: local changes waiting for the server
       };
-      req.onsuccess = () => { _db = req.result; resolve(_db); };
+      req.onsuccess = () => {
+        _db = req.result;
+        // a newer app version opening the database must not be blocked by this tab
+        _db.onversionchange = () => { try { _db.close(); } catch { } _db = null; };
+        resolve(_db);
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -58,10 +68,48 @@ const DB = (() => {
   const uid = () => (crypto.randomUUID ? crypto.randomUUID()
     : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 
+  /* --- outbox: one entry per changed record, keyed store|id. The token tells
+     a push that finished apart from a change made while it was in flight. --- */
+  const token = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const outEntry = (store, id) => ({ k: store + '|' + id, store, id, t: token() });
+
+  // record + outbox entry, atomically
+  function writeSynced(store, rec) {
+    return open().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction([store, 'outbox'], 'readwrite');
+      t.objectStore(store).put(rec);
+      t.objectStore('outbox').put(outEntry(store, rec.id));
+      t.oncomplete = () => resolve(rec);
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    }));
+  }
+
+  const outbox = {
+    list: () => allRaw('outbox'),
+    add: (store, id) => reqProm('outbox', 'readwrite', s => s.put(outEntry(store, id))),
+    // drop the entries a push delivered — unless the record changed again meanwhile
+    done(entries) {
+      if (!entries.length) return Promise.resolve();
+      return open().then(db => new Promise((resolve, reject) => {
+        const t = db.transaction('outbox', 'readwrite');
+        const s = t.objectStore('outbox');
+        for (const e of entries) {
+          const r = s.get(e.k);
+          r.onsuccess = () => { if (r.result && r.result.t === e.t) s.delete(e.k); };
+        }
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+      }));
+    },
+    clear: () => reqProm('outbox', 'readwrite', s => s.clear()),
+  };
+
   /* --- generic CRUD --- */
   async function put(store, rec) {
     if (!rec.id) rec.id = uid();
     rec.updatedAt = Date.now();
+    if (SYNC_STORES.includes(store)) return writeSynced(store, rec);
     await reqProm(store, 'readwrite', s => s.put(rec));
     return rec;
   }
@@ -82,7 +130,7 @@ const DB = (() => {
       if (!rec) return;
       const tomb = { id: rec.id, deleted: true, updatedAt: Date.now() };
       if (rec.tripId) tomb.tripId = rec.tripId;
-      await putRaw(store, tomb);
+      await writeSynced(store, tomb);
     } else {
       await reqProm(store, 'readwrite', s => s.delete(id));
     }
@@ -122,14 +170,14 @@ const DB = (() => {
       const remoteIds = new Set(remoteRecs.map(r => r.id));
       for (const rr of remoteRecs) {
         const lr = localMap.get(rr.id);
-        if (!lr || (rr.updatedAt || 0) > (lr.updatedAt || 0)) {
-          const merged = { ...rr };
-          if (st === 'documents' && lr && lr.blob) merged.blob = lr.blob; // blob is a local cache
-          await putRaw(st, merged);
+        const merged = Merge.record(st, lr, rr);
+        if (!lr || !Merge.same(st, merged, lr)) {
+          const m = { ...merged };
+          if (st === 'documents' && lr && lr.blob) m.blob = lr.blob; // blob is a local cache
+          await putRaw(st, m);
           localChanged = true;
-        } else if ((lr.updatedAt || 0) > (rr.updatedAt || 0)) {
-          needUpload = true;
         }
+        if (!Merge.same(st, merged, rr)) needUpload = true;
       }
       if (localRecs.some(r => !remoteIds.has(r.id))) needUpload = true;
     }
@@ -168,7 +216,9 @@ const DB = (() => {
   async function dataURLToBlob(du) { return (await fetch(du)).blob(); }
 
   // transient keys that make no sense on another install; shared keys are exported separately
-  const BACKUP_SETTINGS_SKIP = ['lastSync', 'sharedUpdatedAt', ...SHARED_SETTINGS];
+  // deviceKey: a restored phone pairs again — a backup file must not carry a login
+  const BACKUP_SETTINGS_SKIP = ['lastSync', 'sharedUpdatedAt', ...SHARED_SETTINGS,
+    'deviceKey', 'server', 'serverVia', 'sharedMeta'];
 
   async function exportBackup() {
     const out = { app: 'TripNest', version: 2, exported: new Date().toISOString() };
@@ -195,7 +245,8 @@ const DB = (() => {
       for (const r of (data[st] || [])) {
         const rec = { ...r };
         if (rec.blobData) { rec.blob = await dataURLToBlob(rec.blobData); delete rec.blobData; }
-        await putRaw(st, rec);
+        if (!rec.id) continue;
+        await writeSynced(st, rec); // restored records reach the server too
       }
     }
     const shared = Object.entries(data.settingsShared || {}).filter(([, v]) => v != null);
@@ -208,9 +259,9 @@ const DB = (() => {
   }
 
   return {
-    init: open, uid, put, putRaw, get, all, allRaw, byTrip, remove,
+    init: open, uid, put, putRaw, get, all, allRaw, byTrip, remove, outbox,
     settings, touchShared, exportSync, mergeSync, exportBackup, importBackup,
-    blobToDataURL, dataURLToBlob, SYNC_STORES,
+    blobToDataURL, dataURLToBlob, SYNC_STORES, SHARED_SETTINGS,
   };
 })();
 window.DB = DB;

@@ -218,14 +218,14 @@ const Agent = (() => {
       case 'create_checklist': {
         const l = await DB.put('checklists', {
           tripId: args.tripId, title: args.title,
-          items: (args.items || []).map(t => ({ id: DB.uid(), text: t, done: false })),
+          items: (args.items || []).map(t => ({ id: DB.uid(), text: t, done: false, u: Date.now() })),
         });
         return { ok: true, checklistId: l.id };
       }
       case 'add_checklist_items': {
         const l = await DB.get('checklists', args.checklistId);
         if (!l) return { ok: false, error: 'checklist not found' };
-        (args.items || []).forEach(t => l.items.push({ id: DB.uid(), text: t, done: false }));
+        (args.items || []).forEach(t => l.items.push({ id: DB.uid(), text: t, done: false, u: Date.now() }));
         await DB.put('checklists', l);
         return { ok: true };
       }
