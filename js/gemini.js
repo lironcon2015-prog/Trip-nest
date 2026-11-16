@@ -13,7 +13,9 @@ const Gemini = (() => {
     if (!k) throw new Error('חסר מפתח Gemini — הוסיפו אותו בהגדרות');
     return k;
   }
-  const hasKey = async () => !!(await DB.settings.get('geminiKey'));
+  // paired with the server, the key lives there and calls leave from Western Europe
+  const viaServer = () => !!(window.Server && Server.isPaired());
+  const hasKey = async () => (viaServer() ? Server.caps().gemini > 0 : !!(await DB.settings.get('geminiKey')));
 
   async function models() {
     const stored = await DB.settings.get('geminiModels');
@@ -53,9 +55,10 @@ const Gemini = (() => {
     && /location/i.test(data?.error?.message || '');
 
   async function call(payload) {
-    const apiKey = await key();
+    const server = viaServer();
+    const apiKey = server ? null : await key();
     for (const model of await models()) {
-      const res = await post(model, apiKey, payload);
+      const res = server ? await Server.ai(model, payload, config.timeoutMs + 15000) : await post(model, apiKey, payload);
       // Non-JSON error bodies (proxy/HTML 5xx) must not abort the cascade.
       let data = null;
       try { data = await res.json(); } catch { }
@@ -72,12 +75,15 @@ const Gemini = (() => {
 
   // diagnostics: run a test prompt against every model → [{model, ok, ms, reply|error}]
   async function testModels(promptText = 'ענה במילה אחת: שלום') {
-    const apiKey = await key();
+    const server = viaServer();
+    if (server && !Server.caps().gemini) throw new Error('לשרת אין מפתח Gemini — הזינו מפתח ושמרו');
+    const apiKey = server ? null : await key();
     const results = [];
     for (const model of await models()) {
       const startedAt = performance.now();
       try {
-        const res = await post(model, apiKey, { contents: [{ parts: [{ text: promptText }] }] });
+        const payload = { contents: [{ parts: [{ text: promptText }] }] };
+        const res = server ? await Server.ai(model, payload, config.timeoutMs + 15000) : await post(model, apiKey, payload);
         let data = null;
         try { data = await res.json(); } catch { }
         const ms = Math.round(performance.now() - startedAt);

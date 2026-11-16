@@ -65,6 +65,12 @@ const DB = (() => {
     }));
   }
 
+  // record stamps follow the server's clock when this phone's is far off
+  // (a manual time-zone change) — set by js/server.js from the server's `now`
+  let skew = 0;
+  const now = () => Date.now() + skew;
+  const setClockSkew = (ms) => { skew = Number(ms) || 0; };
+
   const uid = () => (crypto.randomUUID ? crypto.randomUUID()
     : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 
@@ -108,7 +114,7 @@ const DB = (() => {
   /* --- generic CRUD --- */
   async function put(store, rec) {
     if (!rec.id) rec.id = uid();
-    rec.updatedAt = Date.now();
+    rec.updatedAt = now();
     if (SYNC_STORES.includes(store)) return writeSynced(store, rec);
     await reqProm(store, 'readwrite', s => s.put(rec));
     return rec;
@@ -128,7 +134,7 @@ const DB = (() => {
     if (SYNC_STORES.includes(store)) {
       const rec = await get(store, id);
       if (!rec) return;
-      const tomb = { id: rec.id, deleted: true, updatedAt: Date.now() };
+      const tomb = { id: rec.id, deleted: true, updatedAt: now() };
       if (rec.tripId) tomb.tripId = rec.tripId;
       await writeSynced(store, tomb);
     } else {
@@ -142,7 +148,7 @@ const DB = (() => {
     set(key, value) { return putRaw('settings', { key, value }); },
     del(key) { return reqProm('settings', 'readwrite', s => s.delete(key)); },
   };
-  async function touchShared() { await settings.set('sharedUpdatedAt', Date.now()); }
+  async function touchShared() { await settings.set('sharedUpdatedAt', now()); }
 
   /* --- sync (Drive db.json) --- */
   const stripBlob = (rec) => { const { blob, ...rest } = rec; return rest; };
@@ -259,7 +265,7 @@ const DB = (() => {
   }
 
   return {
-    init: open, uid, put, putRaw, get, all, allRaw, byTrip, remove, outbox,
+    init: open, uid, put, putRaw, get, all, allRaw, byTrip, remove, outbox, now, setClockSkew,
     settings, touchShared, exportSync, mergeSync, exportBackup, importBackup,
     blobToDataURL, dataURLToBlob, SYNC_STORES, SHARED_SETTINGS,
   };

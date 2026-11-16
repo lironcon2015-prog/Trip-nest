@@ -20,8 +20,10 @@ const G = (() => {
                  משמש רק לסריקת Gmail כדי שכל סריקה תכסה את שתי התיבות. */
   const isConfigured = async () =>
     !!(await DB.settings.get('bridgeUrl')) && !!(await DB.settings.get('bridgeToken'));
-  const hasPartnerBridge = async () =>
-    !!(await DB.settings.get('partnerBridgeUrl')) && !!(await DB.settings.get('partnerBridgeToken'));
+  // paired with the server, both bridges live there (js/server.js)
+  const paired = () => !!(window.Server && Server.isPaired());
+  const hasPartnerBridge = async () => (paired() ? Server.caps().mailboxes.length > 1
+    : !!(await DB.settings.get('partnerBridgeUrl')) && !!(await DB.settings.get('partnerBridgeToken')));
 
   /* Every request has a deadline: on a stalled hotel/roaming network a bare fetch
      can hang for minutes and keep the sync lock with it. Reads get one quiet
@@ -143,6 +145,7 @@ const G = (() => {
   /* --- drive (מה שהמודולים האחרים צריכים) --- */
   const drive = {
     async downloadBlob(fileId) {
+      if (paired()) return Server.downloadFile(fileId);
       const out = await call('download', { fileId });
       return b64ToBlob(out.data, out.mimeType);
     },
@@ -174,11 +177,17 @@ const G = (() => {
   /* --- Sync --- */
   let _syncing = false;
   const Sync = {
-    async isReady() { return (await isConfigured()) && !!(await DB.settings.get('driveFolderId')); },
+    async isReady() { return paired() || ((await isConfigured()) && !!(await DB.settings.get('driveFolderId'))); },
 
-    async run({ silent = true } = {}) {
+    // paired → the server (js/server.js); before pairing → the Drive db.json below
+    async run(opts = {}) {
+      if (paired()) return Server.sync(opts);
+      return this.runLegacy(opts);
+    },
+
+    async runLegacy({ silent = true } = {}) {
       if (_syncing) { if (!silent) UI.toast('סנכרון כבר מתבצע…', 'info'); return { skipped: true }; }
-      if (!(await this.isReady())) { if (!silent) UI.toast('הגשר לא הוגדר — פתחו את ההגדרות', 'warning'); return { skipped: true }; }
+      if (!((await isConfigured()) && !!(await DB.settings.get('driveFolderId')))) { if (!silent) UI.toast('הגשר לא הוגדר — פתחו את ההגדרות', 'warning'); return { skipped: true }; }
       _syncing = true;
       document.dispatchEvent(new CustomEvent('tn-sync-state', { detail: 'start' }));
       try {
@@ -225,7 +234,7 @@ const G = (() => {
     _t: null,
     queue() {
       clearTimeout(this._t);
-      this._t = setTimeout(() => this.run({ silent: true }), 4000);
+      this._t = setTimeout(() => this.run({ silent: true }), paired() ? 1500 : 4000);
     },
   };
 
@@ -262,6 +271,8 @@ const G = (() => {
     // extra.label (bridge >= 1.4.0) matches any Gmail label containing the word,
     // e.g. '@Navigo'; older bridges ignore it and fall back to the q string
     async search(q, max = 25, extra = {}) {
+      // paired: one call, the server asks both mailboxes; ids carry the mailbox ('<email>/<id>')
+      if (paired()) return this._dedupe(await Server.gmail.search(q, max, extra), (await DB.settings.get('myEmail')) || Server.mailbox());
       const jobs = [
         call('gmailSearch', { q, max, ...extra })
           .then(out => (out.messages || []).map(m => ({ ...m, mailbox: 'me' }))),
@@ -275,19 +286,25 @@ const G = (() => {
             return [];
           }));
       }
-      const results = (await Promise.all(jobs)).flat();
-      // the same mail often sits in both mailboxes (both recipients / forwarded) —
-      // keep a single copy, preferring my own mailbox
+      return this._dedupe((await Promise.all(jobs)).flat(), 'me');
+    },
+    // the same mail often sits in both mailboxes (both recipients / forwarded) —
+    // keep a single copy, preferring my own mailbox
+    _dedupe(results, mine) {
       const seen = new Map();
       for (const m of results) {
         const key = `${(m.subject || '').trim()}|${(m.date || '').slice(0, 16)}`;
         const cur = seen.get(key);
-        if (!cur || (cur.mailbox === 'partner' && m.mailbox === 'me')) seen.set(key, m);
+        if (!cur || (cur.mailbox !== mine && m.mailbox === mine)) seen.set(key, m);
       }
       return [...seen.values()].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     },
     // הגשר כבר מפרק את המייל — payload הוא { text, html, attachments }
     async getFull(id) {
+      if (paired() && String(id).includes('/')) {
+        const out = await Server.gmail.get(id);
+        return { id, payload: { text: out.text || '', html: out.html || '', attachments: out.attachments || [] } };
+      }
       const r = this._route(id);
       const out = await call('gmailGet', { id: r.id }, { account: r.account });
       return { id, payload: { text: out.text || '', html: out.html || '', attachments: out.attachments || [] } };
@@ -296,6 +313,10 @@ const G = (() => {
       return payload || { attachments: [], text: '', html: '' };
     },
     async getAttachment(msgId, att) {
+      if (paired() && String(msgId).includes('/')) {
+        const out = await Server.gmail.attachment(msgId, att.attachmentId);
+        return b64ToBlob(out.data, out.mimeType || att.mimeType);
+      }
       const r = this._route(msgId);
       const out = await call('gmailAttachment', { id: r.id, index: att.attachmentId }, { account: r.account });
       return b64ToBlob(out.data, out.mimeType || att.mimeType);

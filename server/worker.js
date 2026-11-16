@@ -251,7 +251,7 @@ export class Family extends DurableObject {
     for (const b of list) {
       const url = String((b && b.url) || '').trim();
       const token = String((b && b.token) || '');
-      if (!BRIDGE_RE.test(url) || !token) continue;
+      if (!BRIDGE_RE.test(url) || !token) { report.push({ email: null, ok: false, error: 'כתובת או טוקן לא תקינים' }); continue; }
       let email = String((b && b.email) || '').trim().toLowerCase();
       try {
         const p = await this.bridgeCall({ url, token, email: email || 'הגשר' }, { action: 'ping' }, FETCH_MS);

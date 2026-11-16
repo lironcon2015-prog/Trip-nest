@@ -262,6 +262,7 @@ const App = (() => {
     document.querySelectorAll('[data-qa]').forEach(b =>
       b.addEventListener('click', () => quickAction(b.dataset.qa)));
 
+    await Server.init();
     Archive.init();
     Agent.init();
     navigate('home');
@@ -273,6 +274,9 @@ const App = (() => {
       if (!dot) return;
       dot.className = 'w-2 h-2 rounded-full ' + (e.detail === 'start' ? 'bg-amber-400 animate-pulse' : e.detail === 'error' ? 'bg-red-400' : 'bg-emerald-400');
     });
+
+    // the way around through Google came or went: the settings screen shows it
+    document.addEventListener('tn-route', () => { if (current === 'settings') refresh(); });
 
     // service worker + update detection
     await Updater.init();

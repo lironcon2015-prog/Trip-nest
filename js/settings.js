@@ -1,6 +1,51 @@
-/* TripNest — settings: Google bridge & shared folder, email keywords, Gemini & persona,
-   family members, vault PIN, local backup, version. */
+/* TripNest — settings: the Navigo server (pairing, devices), the Google bridge &
+   shared folder (before pairing), email keywords, Gemini & persona, family
+   members, vault PIN, local backup, version. */
 const Settings = (() => {
+  // a one-time code from a paired phone: 8 characters from the server's alphabet
+  const ONCE_RE = /^[2-9a-hj-np-z]{4}[-\s]?[2-9a-hj-np-z]{4}$/i;
+
+  function serverCard({ paired, srv, caps, around, lastSync, myEmail }) {
+    const host = (() => { try { return new URL(Server.baseUrl()).host; } catch { return Server.baseUrl(); } })();
+    if (!paired) {
+      const lostIt = srv && srv.unpaired;
+      return `
+      <section class="tn-card">
+        <h3 class="tn-card-title">${UI.icon('cloud', 'w-[18px] h-[18px] text-indigo-500')} שרת Navigo</h3>
+        ${lostIt ? `<div class="bg-red-50 text-red-600 text-xs rounded-xl p-2.5 mb-3">המכשיר נותק מהשרת (נותק ממכשיר אחר, או שהשרת הוחלף). חברו אותו מחדש — הנתונים שעליו יישמרו.</div>` : ''}
+        <p class="text-[11px] text-slate-400 leading-relaxed mb-3">החיבור לשרת מחליף את הסנכרון דרך הדרייב: שינוי של אחד מכם מופיע אצל השני תוך שנייה, וה-AI והמייל עובדים מכל רשת, גם בחו״ל. בחיבור הטלפון מעביר לשרת את הגשרים, את מפתח ה-Gemini ואת תיקיית הדרייב, ומוחק אותם מהמכשיר. עד שתחברו, האפליקציה עובדת כמו קודם.</p>
+        <div class="space-y-3">
+          <div><label class="tn-label">קוד המשפחה, או קוד חד-פעמי מהטלפון השני</label>
+            <input id="st-srv-code" class="tn-input text-xs" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="FAMILY_CODE  /  XXXX-XXXX"></div>
+          <div><label class="tn-label">שם המכשיר</label>
+            <input id="st-srv-name" class="tn-input text-xs" value="${UI.esc(myEmail ? myEmail.split('@')[0] : '')}" placeholder="למשל: הטלפון של לירון"></div>
+          <button id="st-srv-pair" class="tn-btn-primary w-full">${UI.icon('link', 'w-4 h-4')} חיבור לשרת</button>
+          <div id="st-srv-step" class="text-[11px] text-slate-500 text-center"></div>
+        </div>
+      </section>`;
+    }
+    const status = around
+      ? `<div class="flex items-center justify-between bg-amber-50 text-amber-700 text-xs rounded-xl p-2.5"><span>מחובר דרך גוגל — הרשת הזו חוסמת את השרת</span><b dir="ltr">${UI.esc(host)}</b></div>`
+      : `<div class="flex items-center justify-between bg-emerald-50 text-emerald-700 text-xs rounded-xl p-2.5"><span>מחובר לשרת</span><b dir="ltr">${UI.esc(host)}</b></div>`;
+    const boxes = (caps.mailboxes || []).map(m => `<span class="block" dir="ltr">${UI.esc(m)}</span>`).join('') || '—';
+    return `
+      <section class="tn-card">
+        <h3 class="tn-card-title">${UI.icon('cloud', 'w-[18px] h-[18px] text-indigo-500')} שרת Navigo</h3>
+        <div class="space-y-3">
+          ${status}
+          <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+            <div class="bg-slate-50 rounded-xl p-2.5">תיבות מייל<b class="block text-slate-700 font-medium mt-0.5">${boxes}</b></div>
+            <div class="bg-slate-50 rounded-xl p-2.5">גיבוי לילי לדרייב<b class="block text-slate-700 font-medium mt-0.5">${caps.backupAt ? new Date(caps.backupAt).toLocaleString('he-IL') : 'עוד לא בוצע'}</b></div>
+          </div>
+          <button id="st-srv-sync" class="tn-btn-primary w-full">${UI.icon('sync', 'w-4 h-4')} סנכרון עכשיו</button>
+          <div class="text-[11px] text-slate-400 text-center">${lastSync ? 'סנכרון אחרון: ' + new Date(lastSync).toLocaleString('he-IL') : 'טרם בוצע סנכרון'}</div>
+          <div class="flex gap-2">
+            <button id="st-srv-add" class="tn-btn-secondary flex-1 !text-xs">${UI.icon('plus', 'w-3.5 h-3.5')} חיבור מכשיר נוסף</button>
+            <button id="st-srv-devices" class="tn-btn-secondary flex-1 !text-xs">${UI.icon('users', 'w-3.5 h-3.5')} המכשירים</button>
+          </div>
+        </div>
+      </section>`;
+  }
 
   async function render() {
     const el = document.getElementById('settings-body');
@@ -13,9 +58,14 @@ const Settings = (() => {
       Food.profile(), Food.favoritesRaw(), Food.viewMode(),
     ]);
     const geminiModels = await Gemini.models();
+    const paired = Server.isPaired();
+    const caps = Server.caps();
+    const around = Server.goingAround();
 
     el.innerHTML = `
-      <!-- Google bridge -->
+      ${serverCard({ paired, srv: Server.state(), caps, around, lastSync, myEmail })}
+      ${paired ? '' : `
+      <!-- Google bridge (before pairing) -->
       <section class="tn-card">
         <h3 class="tn-card-title">${UI.icon('cloud', 'w-[18px] h-[18px] text-indigo-500')} גשר Google (דרייב + Gmail)</h3>
         <p class="text-[11px] text-slate-400 mb-3">הגשר הוא סקריפט קטן שרץ בחשבון Google שלכם (ראו README). הדביקו כאן את כתובתו ואת הטוקן הסודי שהגדרתם בו.</p>
@@ -53,7 +103,7 @@ const Settings = (() => {
           <button id="st-sync-now" class="tn-btn-primary w-full" ${folderId ? '' : 'disabled'}>${UI.icon('sync', 'w-4 h-4')} סנכרון עכשיו</button>
           <div class="text-[11px] text-slate-400 text-center">${lastSync ? 'סנכרון אחרון: ' + new Date(lastSync).toLocaleString('he-IL') : 'טרם בוצע סנכרון'}</div>
         </div>
-      </section>
+      </section>`}
 
       <!-- Email scan (Navigo label) -->
       <section class="tn-card">
@@ -71,8 +121,11 @@ const Settings = (() => {
       <section class="tn-card">
         <h3 class="tn-card-title">${UI.icon('sparkles', 'w-[18px] h-[18px] text-indigo-500')} סוכן AI (Gemini)</h3>
         <div class="space-y-3">
-          <div><label class="tn-label">Gemini API Key <span class="text-slate-300">(נשמר במכשיר בלבד)</span></label>
-            <input id="st-gemini-key" type="password" class="tn-input text-xs" dir="ltr" placeholder="AIza..." value="${UI.esc(geminiKey || '')}"></div>
+          ${paired
+        ? `<div><label class="tn-label">Gemini API Key <span class="text-slate-300">(נשמר בשרת — ${caps.gemini ? `${caps.gemini} ${caps.gemini > 1 ? 'מפתחות' : 'מפתח'}` : 'אין עדיין'})</span></label>
+            <input id="st-gemini-key" type="password" class="tn-input text-xs" dir="ltr" placeholder="${caps.gemini ? 'מפתח נוסף (לא חובה)' : 'AIza...'}" value=""></div>`
+        : `<div><label class="tn-label">Gemini API Key <span class="text-slate-300">(נשמר במכשיר בלבד)</span></label>
+            <input id="st-gemini-key" type="password" class="tn-input text-xs" dir="ltr" placeholder="AIza..." value="${UI.esc(geminiKey || '')}"></div>`}
           <div><label class="tn-label">מפל מודלים <span class="text-slate-300">(לפי הסדר, מופרדים בפסיק)</span></label>
             <input id="st-gemini-models" class="tn-input text-xs" dir="ltr" value="${UI.esc(geminiModels.join(', '))}">
             <button id="st-test-models" class="text-[11px] text-indigo-400 font-medium mt-1">${UI.icon('flask', 'w-3.5 h-3.5')} בדיקת המודלים</button>
@@ -114,27 +167,28 @@ const Settings = (() => {
         <div class="space-y-2">
           <button id="st-vault-pin" class="tn-menu-btn">${UI.icon('key', 'w-4 h-4')} קוד גישה לכספת הדרכונים</button>
           <button id="st-export" class="tn-menu-btn">${UI.icon('download', 'w-4 h-4')} ייצוא גיבוי מלא (JSON)</button>
-          <button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} קובץ חיבור לבן/בת הזוג (קטן — הנתונים יימשכו מהדרייב)</button>
+          ${paired ? '' : `<button id="st-export-partner" class="tn-menu-btn">${UI.icon('heart', 'w-4 h-4')} קובץ חיבור לבן/בת הזוג (קטן — הנתונים יימשכו מהדרייב)</button>`}
           <button id="st-import" class="tn-menu-btn">${UI.icon('upload', 'w-4 h-4')} שחזור מגיבוי</button>
           <input type="file" id="st-import-file" accept="application/json" class="hidden">
-          <p class="text-[11px] text-slate-400">"גיבוי מלא" כולל את כל הנתונים ומשחזר את <b>המכשיר הזה</b>. "קובץ חיבור" הוא קובץ קטן לבן/בת הזוג: רק החיבורים והמפתחות, בתפקיד הנכון (הגשר שלו/שלה כראשי) — מרימים אותו במכשיר שלו/שלה דרך "שחזור מגיבוי", וכל הנתונים והמסמכים נמשכים אוטומטית מתיקיית הדרייב המשותפת. צילומי הדרכון לא נכללים באף גיבוי — הם לא עוזבים את המכשיר.</p>
+          ${paired ? `<p class="text-[11px] text-slate-400">"גיבוי מלא" כולל את כל הנתונים ומשחזר את <b>המכשיר הזה</b> (את החיבור לשרת מחדשים אחרי שחזור). בנוסף, השרת שומר כל לילה עותק בתיקיית הדרייב המשותפת — שבעת הימים האחרונים. צילומי הדרכון לא נכללים באף גיבוי — הם לא עוזבים את המכשיר.</p>` : `<p class="text-[11px] text-slate-400">"גיבוי מלא" כולל את כל הנתונים ומשחזר את <b>המכשיר הזה</b>. "קובץ חיבור" הוא קובץ קטן לבן/בת הזוג: רק החיבורים והמפתחות, בתפקיד הנכון (הגשר שלו/שלה כראשי) — מרימים אותו במכשיר שלו/שלה דרך "שחזור מגיבוי", וכל הנתונים והמסמכים נמשכים אוטומטית מתיקיית הדרייב המשותפת. צילומי הדרכון לא נכללים באף גיבוי — הם לא עוזבים את המכשיר.</p>`}
         </div>
       </section>
 
       <div class="text-center pb-4">
-        <div class="text-[11px] text-slate-300">Navigo v<span id="st-version">${window._BUNDLE_VERSION || ''}</span></div>
+        <div class="text-[11px] text-slate-300">Navigo v<span id="st-version">${window._BUNDLE_VERSION || ''}</span>${around ? ' · דרך גוגל' : ''}</div>
         <button id="st-check-update" class="text-[11px] text-indigo-400 font-medium mt-1.5">${UI.icon('sync', 'w-3.5 h-3.5')} בדיקת עדכון גרסה</button>
       </div>`;
 
     /* wiring */
     const saveBridgeInputs = async () => {
+      if (paired) return;
       await DB.settings.set('bridgeUrl', document.getElementById('st-bridge-url').value.trim());
       await DB.settings.set('bridgeToken', document.getElementById('st-bridge-token').value.trim());
       await DB.settings.set('partnerBridgeUrl', document.getElementById('st-partner-url').value.trim());
       await DB.settings.set('partnerBridgeToken', document.getElementById('st-partner-token').value.trim());
     };
 
-    document.getElementById('st-save-bridge').addEventListener('click', async () => {
+    document.getElementById('st-save-bridge')?.addEventListener('click', async () => {
       await saveBridgeInputs();
       UI.toast('נשמר ✓ עכשיו אפשר לבדוק חיבור', 'success');
     });
@@ -165,7 +219,7 @@ const Settings = (() => {
       },
     });
 
-    document.getElementById('st-ping-bridge').addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+    document.getElementById('st-ping-bridge')?.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
       try {
         await saveBridgeInputs();
         const out = await G.ping();
@@ -176,7 +230,7 @@ const Settings = (() => {
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
-    document.getElementById('st-ping-partner').addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+    document.getElementById('st-ping-partner')?.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
       try {
         await saveBridgeInputs();
         const out = await G.ping({ account: 'partner' });
@@ -187,7 +241,7 @@ const Settings = (() => {
       } catch (err) { UI.toast(err.message, 'error'); }
     }));
 
-    document.getElementById('st-create-folder').addEventListener('click', () => {
+    document.getElementById('st-create-folder')?.addEventListener('click', () => {
       UI.openModal({
         title: 'יצירת תיקייה משותפת (מכשיר ראשון)',
         confirmLabel: 'יצירה ושיתוף',
@@ -208,7 +262,7 @@ const Settings = (() => {
       });
     });
 
-    document.getElementById('st-connect-folder').addEventListener('click', () => {
+    document.getElementById('st-connect-folder')?.addEventListener('click', () => {
       UI.openModal({
         title: 'התחברות לתיקייה קיימת (מכשיר שני)',
         confirmLabel: 'חיפוש והתחברות',
@@ -227,12 +281,74 @@ const Settings = (() => {
       });
     });
 
-    document.getElementById('st-sync-now').addEventListener('click', (e) =>
+    document.getElementById('st-sync-now')?.addEventListener('click', (e) =>
       UI.busy(e.currentTarget, () => G.Sync.run({ silent: false })).then(render));
 
-    /* gemini */
+    /* server */
+    document.getElementById('st-srv-pair')?.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+      const v = document.getElementById('st-srv-code').value.trim();
+      if (!v) { UI.toast('הזינו את קוד המשפחה, או קוד חד-פעמי מהטלפון השני', 'warning'); return; }
+      const once = ONCE_RE.test(v);
+      const step = document.getElementById('st-srv-step');
+      try {
+        await Server.pair({
+          familyCode: once ? '' : v, code: once ? v : '',
+          name: document.getElementById('st-srv-name').value.trim(),
+          onStep: (t) => { step.textContent = t; },
+        });
+        UI.toast('הטלפון מחובר לשרת ✓', 'success');
+        render();
+      } catch (err) {
+        step.textContent = '';
+        UI.toast(err.code === 'network' ? 'השרת לא זמין — ודאו שהוא הוגדר ב-Cloudflare (ראו README) ונסו שוב' : err.message, 'error');
+      }
+    }));
+    document.getElementById('st-srv-sync')?.addEventListener('click', (e) =>
+      UI.busy(e.currentTarget, () => G.Sync.run({ silent: false })).then(render));
+    document.getElementById('st-srv-add')?.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+      try {
+        const { code, expires } = await Server.pairCode();
+        UI.openModal({
+          title: 'חיבור מכשיר נוסף', hideConfirm: true,
+          bodyHTML: `
+            <p class="text-xs text-slate-500 mb-3">בטלפון החדש: הגדרות ← שרת Navigo ← הקלידו את הקוד. הוא עובד פעם אחת, במשך 10 דקות.</p>
+            <div class="text-center text-3xl font-bold tracking-widest text-indigo-600 bg-indigo-50 rounded-2xl py-4" dir="ltr">${UI.esc(code)}</div>
+            <p class="text-[11px] text-slate-400 mt-3 text-center">בתוקף עד ${new Date(expires).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</p>`,
+        });
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }));
+    document.getElementById('st-srv-devices')?.addEventListener('click', (e) => UI.busy(e.currentTarget, async () => {
+      try {
+        const list = await Server.devices();
+        UI.openModal({
+          title: 'המכשירים המחוברים', hideConfirm: true,
+          bodyHTML: `<div class="space-y-2">${list.map(d => `
+            <div class="srv-dev flex items-center gap-3 bg-slate-50 rounded-xl p-2.5">
+              <div class="flex-1 min-w-0">
+                <b class="block text-sm text-slate-700 truncate">${UI.esc(d.name || 'מכשיר')}${d.me ? ' <span class="text-[10px] text-emerald-600 font-medium">המכשיר הזה</span>' : ''}</b>
+                ${d.mailbox ? `<span class="block text-[11px] text-slate-400" dir="ltr">${UI.esc(d.mailbox)}</span>` : ''}
+                <span class="block text-[11px] text-slate-400">נראה לאחרונה: ${d.seen ? new Date(d.seen).toLocaleString('he-IL') : '—'}${d.version ? ' · v' + UI.esc(d.version) : ''}</span>
+              </div>
+              ${d.me ? '' : `<button class="srv-revoke text-xs text-red-500 font-medium px-2 py-1" data-id="${UI.esc(d.id)}">ניתוק</button>`}
+            </div>`).join('')}</div>
+            <p class="text-[11px] text-slate-400 mt-3">טלפון שאבד או נגנב — נתקו אותו כאן. הוא לא יוכל עוד לקרוא או לכתוב.</p>`,
+        });
+        document.querySelectorAll('.srv-revoke').forEach(b => b.addEventListener('click', () =>
+          UI.confirm('לנתק את המכשיר הזה מהשרת? הוא יצטרך קוד חדש כדי להתחבר שוב.', async () => {
+            await Server.revoke(b.dataset.id);
+            UI.toast('המכשיר נותק ✓', 'success');
+          })));
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }));
+
+    /* gemini — paired, a typed key goes to the server and not to this phone */
+    const keepGeminiKey = async () => {
+      const v = document.getElementById('st-gemini-key').value.trim();
+      if (!paired) { await DB.settings.set('geminiKey', v); return; }
+      if (v) { await Server.giveGeminiKey(v); document.getElementById('st-gemini-key').value = ''; }
+    };
     document.getElementById('st-save-gemini').addEventListener('click', async () => {
-      await DB.settings.set('geminiKey', document.getElementById('st-gemini-key').value.trim());
+      try { await keepGeminiKey(); } catch (err) { UI.toast(err.message, 'error'); return; }
       const models = document.getElementById('st-gemini-models').value.split(',').map(s => s.trim()).filter(Boolean);
       await Gemini.setModels(models.length ? models : Gemini.DEFAULT_MODELS.slice());
       await DB.settings.set('agentPersona', document.getElementById('st-persona').value.trim());
@@ -254,7 +370,7 @@ const Settings = (() => {
       e.target.disabled = true;
       out.innerHTML = '<span class="text-slate-400">בודק…</span>';
       try {
-        await DB.settings.set('geminiKey', document.getElementById('st-gemini-key').value.trim());
+        await keepGeminiKey();
         const models = document.getElementById('st-gemini-models').value.split(',').map(s => s.trim()).filter(Boolean);
         if (models.length) await Gemini.setModels(models);
         const results = await Gemini.testModels();
@@ -299,7 +415,7 @@ const Settings = (() => {
     // swapped (their bridge becomes "mine", ours becomes "partner"), shared folder and
     // Gemini key. No data payload — everything syncs down from the shared Drive folder,
     // so the file stays WhatsApp-sized. This device's local secrets (vault PIN) stay out.
-    document.getElementById('st-export-partner').addEventListener('click', async (e) => UI.busy(e.currentTarget, async () => {
+    document.getElementById('st-export-partner')?.addEventListener('click', async (e) => UI.busy(e.currentTarget, async () => {
       const [bu, bt, pu, pt, fid, fname, gk, gm] = await Promise.all([
         DB.settings.get('bridgeUrl'), DB.settings.get('bridgeToken'),
         DB.settings.get('partnerBridgeUrl'), DB.settings.get('partnerBridgeToken'),

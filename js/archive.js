@@ -1,6 +1,7 @@
 /* TripNest — chat archive: the full agent-conversation record, partitioned per
-   trip (+ 'general' for untagged turns), kept locally in IndexedDB and mirrored
-   to named JSON files in the shared Drive folder (chat-archive-<key>.json).
+   trip (+ 'general' for untagged turns), kept locally in IndexedDB and shared
+   through the server (union by id). Before pairing it is mirrored to named JSON
+   files in the shared Drive folder (chat-archive-<key>.json).
    The agent never sees the archive in its regular context — it reaches it on
    demand through the search_archive tool. Requires bridge >= 1.3.0 for the
    Drive mirror; with an older bridge the archive stays local-only. */
@@ -57,16 +58,54 @@ const Archive = (() => {
     return remote;
   }
 
+  const paired = () => !!(window.Server && Server.isPaired());
+  async function addMissing(turns) {
+    const have = new Set((await DB.allRaw('archive')).map(r => r.id));
+    for (const r of turns || []) if (r && r.id && !have.has(r.id)) await DB.putRaw('archive', r);
+  }
+
   // pull one partition before a deep search (best effort, silent)
   async function pull(tripId) {
+    if (paired()) {
+      try { await addMissing((await Server.call('archiveGet', { tripId: tripId || null })).turns); } catch { }
+      return;
+    }
     if (unsupported || !(await G.Sync.isReady())) return;
     try { await mergeRemote(keyOf(tripId)); }
     catch (e) { if (oldBridge(e)) unsupported = true; }
   }
 
+  async function putTurns(turns) {
+    for (let i = 0; i < turns.length; i += 500) await Server.call('archivePut', { turns: turns.slice(i, i + 500) });
+  }
+  // at pairing: every local turn goes up (the server ignores ids it has)
+  async function pushAll() {
+    await putTurns(await DB.allRaw('archive'));
+    await DB.settings.set('archiveDirty', []);
+  }
+  // before pairing: the Drive partitions of every trip come down once
+  async function importLegacy() {
+    if (unsupported) return;
+    const keys = ['general', ...(await DB.allRaw('trips')).map(t => t.id)];
+    for (const key of keys) {
+      try { await mergeRemote(key); } catch (e) { if (oldBridge(e)) { unsupported = true; return; } }
+    }
+  }
+
   let _syncing = false;
   async function sync() {
-    if (_syncing || unsupported || !(await G.Sync.isReady())) return;
+    if (_syncing) return;
+    if (paired()) {
+      _syncing = true;
+      try {
+        for (const key of await dirtyKeys()) {
+          await putTurns(await forKey(key));
+          await DB.settings.set('archiveDirty', (await dirtyKeys()).filter(k => k !== key));
+        }
+      } catch (e) { console.warn('archive sync failed', e); } finally { _syncing = false; }
+      return;
+    }
+    if (unsupported || !(await G.Sync.isReady())) return;
     _syncing = true;
     try {
       for (const key of await dirtyKeys()) {
@@ -89,6 +128,6 @@ const Archive = (() => {
     document.addEventListener('tn-sync-state', (e) => { if (e.detail === 'done') sync(); });
   }
 
-  return { add, search, forTrip, count, pull, sync, init, isUnsupported: () => unsupported };
+  return { add, search, forTrip, count, pull, sync, pushAll, importLegacy, init, isUnsupported: () => unsupported };
 })();
 window.Archive = Archive;
