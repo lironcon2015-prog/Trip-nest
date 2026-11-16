@@ -1,0 +1,19 @@
+# Deployed by Cloudflare from GitHub (Workers Builds, root directory: server) on every push to main.
+# The guide: README.md, "השרת בקלאודפלייר". The name must stay "navigo" — the Worker's name in the dashboard.
+name = "navigo"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+# FAMILY_CODE, typed in the dashboard, survives every deploy from GitHub
+keep_vars = true
+
+[[durable_objects.bindings]]
+name = "FAMILY"
+class_name = "Family"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Family"]
+
+# the nightly backup into the shared Drive folder (UTC — about 03:40 in Israel)
+[triggers]
+crons = ["41 0 * * *"]
