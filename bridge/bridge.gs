@@ -1,4 +1,4 @@
-/* TripNest — Google Apps Script bridge  (v1.4.0)
+/* TripNest — Google Apps Script bridge  (v1.5.0)
    ------------------------------------------------
    הגשר רץ בחשבון Google שלכם ומחליף את OAuth/Cloud Console:
    האפליקציה שולחת אליו בקשות, והוא ניגש ל-Drive ול-Gmail בשמכם.
@@ -12,11 +12,18 @@
    5. העתיקו את כתובת ה-Web app (מסתיימת ב-/exec) — אותה מדביקים בהגדרות האפליקציה יחד עם הטוקן.
 
    עדכון גרסה: הדביקו קוד חדש → Deploy → Manage deployments → Edit → Version: New → Deploy.
+
+   v1.5.0 — מסלול עקיפה לשרת Navigo: רשת שחוסמת את השרת (סלולרי, מלון) עדיין
+   מגיעה לגוגל, והגשר מעביר את הבקשה לשרת מצד גוגל (forward). אחרי ההדבקה:
+   בעורך בוחרים testForward ← Run ← מאשרים הרשאה (גישה לרשת חיצונית) — ורק
+   אז Deploy → Manage deployments → Edit → Version: New → Deploy.
 */
 
 const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 
-const BRIDGE_VERSION = '1.4.0';
+const BRIDGE_VERSION = '1.5.0';
+// the Navigo server on Cloudflare (server/worker.js) — the only address forward calls
+const SERVER_URL = 'https://navigo.lironcon.com';
 const DB_FILE = 'tripnest-db.json';
 const ROOT_MARKER = 'tripnest-root';
 const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התיקייה
@@ -32,6 +39,11 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); }
   catch (err) { return _json({ ok: false, error: 'bad request body' }); }
+
+  // the way around for a phone whose network blocks the server. No token and no
+  // Drive/Gmail access here: the server checks the phone's device key itself,
+  // and SERVER_URL is the only address this ever calls.
+  if (req.forward != null) return _forward(req.forward);
 
   if (!req.token || req.token !== SECRET_TOKEN) {
     return _json({ ok: false, error: 'bad token' });
@@ -279,6 +291,33 @@ function gmailAttachment(req) {
     mimeType: a.getContentType(),
     data: Utilities.base64Encode(a.getBytes()),
   };
+}
+
+/* ---------- forward (v1.5.0) ---------- */
+
+function _forward(body) {
+  if (typeof body !== 'string' || !body || body.length > 30 * 1024 * 1024) {
+    return _json({ ok: false, error: 'bad forward', code: 'bad_request' });
+  }
+  try {
+    const res = UrlFetchApp.fetch(SERVER_URL + '/', {
+      method: 'post', contentType: 'text/plain; charset=utf-8', payload: body,
+      muteHttpExceptions: true, followRedirects: true,
+    });
+    const text = res.getContentText('UTF-8');
+    // the server's own answer (an error included) passes as is; a dead server is 'network'
+    if (res.getResponseCode() >= 500 || !text) return _json({ ok: false, error: 'השרת לא זמין כרגע', code: 'network' });
+    return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return _json({ ok: false, error: 'השרת לא זמין כרגע', code: 'network' });
+  }
+}
+
+// run once from the editor after pasting v1.5.0: grants the external-request
+// permission and checks that Google reaches the server
+function testForward() {
+  const res = UrlFetchApp.fetch(SERVER_URL + '/', { muteHttpExceptions: true });
+  Logger.log('השרת ענה (' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 200));
 }
 
 /* ---------- utils ---------- */
