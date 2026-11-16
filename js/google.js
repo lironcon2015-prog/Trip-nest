@@ -23,6 +23,40 @@ const G = (() => {
   const hasPartnerBridge = async () =>
     !!(await DB.settings.get('partnerBridgeUrl')) && !!(await DB.settings.get('partnerBridgeToken'));
 
+  /* Every request has a deadline: on a stalled hotel/roaming network a bare fetch
+     can hang for minutes and keep the sync lock with it. Reads get one quiet
+     retry (a phone back from the background before its network woke, a cut
+     request); writes are sent once — a write that failed on the way may still
+     have landed, and a second dbPut/upload could duplicate it. Not after a
+     timeout: that already waited. Tests shrink the numbers through G.config. */
+  const config = { timeoutMs: 30000, longTimeoutMs: 120000, retryDelayMs: 1000 };
+  const READS = new Set(['ping', 'findShared', 'dbGet', 'fileGet', 'download', 'gmailSearch', 'gmailGet', 'gmailAttachment']);
+  const LONG = new Set(['upload', 'download', 'gmailAttachment']);
+
+  class BridgeError extends Error {
+    constructor(message, code) { super(message); this.code = code; }
+  }
+
+  async function send(url, body, timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(url, { method: 'POST', body, signal: ctrl.signal });
+    } catch (e) {
+      throw e?.name === 'AbortError'
+        ? new BridgeError('הגשר לא ענה בזמן — נסו שוב בעוד רגע', 'timeout')
+        : new BridgeError('אין חיבור לגשר — בדקו את הכתובת ואת הרשת', 'network');
+    } finally { clearTimeout(timer); }
+    if (!res.ok) throw new BridgeError(`הגשר החזיר שגיאה (${res.status})`, res.status >= 500 ? 'http5xx' : 'http');
+    const data = await res.json().catch(() => null);
+    // a non-JSON answer is a Google HTML page (wrong URL, unauthorised deployment)
+    // or a hotel login page — never treat it as data
+    if (!data) throw new BridgeError('תשובה לא תקינה מהגשר — ודאו שהכתובת היא כתובת ה-Web app (/exec)', 'bad_reply');
+    if (!data.ok) throw new BridgeError(data.error || 'שגיאת גשר', 'refused');
+    return data;
+  }
+
   // POST כ-simple request (בלי headers) כדי לא להפעיל CORS preflight שהגשר לא עונה לו
   async function call(action, params = {}, { account = 'me' } = {}) {
     const keys = account === 'partner' ? ['partnerBridgeUrl', 'partnerBridgeToken'] : ['bridgeUrl', 'bridgeToken'];
@@ -32,17 +66,15 @@ const G = (() => {
         ? 'הגשר של בן/בת הזוג לא הוגדר — הדביקו כתובת וטוקן בהגדרות'
         : 'הגשר לא הוגדר — הדביקו כתובת וטוקן בהגדרות');
     }
-    let res;
+    const body = JSON.stringify({ token, action, ...params });
+    const timeoutMs = LONG.has(action) ? config.longTimeoutMs : config.timeoutMs;
     try {
-      res = await fetch(url, { method: 'POST', body: JSON.stringify({ token, action, ...params }) });
-    } catch {
-      throw new Error('אין חיבור לגשר — בדקו את הכתובת ואת הרשת');
+      return await send(url, body, timeoutMs);
+    } catch (e) {
+      if (!READS.has(action) || !['network', 'http5xx', 'bad_reply'].includes(e.code)) throw e;
+      await new Promise(r => setTimeout(r, config.retryDelayMs));
+      return send(url, body, timeoutMs);
     }
-    if (!res.ok) throw new Error(`הגשר החזיר שגיאה (${res.status})`);
-    const data = await res.json().catch(() => null);
-    if (!data) throw new Error('תשובה לא תקינה מהגשר — ודאו שהכתובת היא כתובת ה-Web app (/exec)');
-    if (!data.ok) throw new Error(data.error || 'שגיאת גשר');
-    return data;
   }
 
   const ping = ({ account = 'me' } = {}) => call('ping', {}, { account }); // → { email, version }
@@ -270,6 +302,6 @@ const G = (() => {
     },
   };
 
-  return { isConfigured, hasPartnerBridge, ping, accountEmail, call, setup, drive, files, Sync, gmail, DEFAULT_KEYWORDS };
+  return { isConfigured, hasPartnerBridge, ping, accountEmail, call, config, setup, drive, files, Sync, gmail, DEFAULT_KEYWORDS };
 })();
 window.G = G;

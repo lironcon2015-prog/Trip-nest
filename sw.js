@@ -1,5 +1,5 @@
 /* TripNest Service Worker — offline-first shell so tickets open with no signal. */
-const CACHE_VERSION = '1.41.0';
+const CACHE_VERSION = '1.42.0';
 const CACHE_NAME = `tripnest-${CACHE_VERSION}`;
 
 const CORE = [
@@ -17,16 +17,26 @@ const CORE = [
   // cmaps (CJK PDFs) are rare — served same-origin and runtime-cached on first use
 ];
 
-// hosts that must never be cached (bridge, APIs)
-const BYPASS = ['script.google.com', 'script.googleusercontent.com', 'googleapis.com', 'generativelanguage.googleapis.com'];
+// hosts that must never be cached (bridge, APIs). Exact host or a subdomain of it —
+// a bare 'googleapis.com' here used to swallow fonts.googleapis.com as well.
+const BYPASS = ['script.google.com', 'script.googleusercontent.com', 'generativelanguage.googleapis.com', 'navigo.lironcon.com'];
+const bypassed = (host) => BYPASS.some(h => host === h || host.endsWith('.' + h));
+
+// third-party assets the shell needs offline (Tailwind, fonts, OCR) — runtime-cached
+const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', (e) => {
   // cache:'no-cache' — fill the new cache from the server, never from a
-  // possibly-stale HTTP cache (Safari serves Pages' max-age=600 copies)
+  // possibly-stale HTTP cache (Safari serves Pages' max-age=600 copies).
+  // Any failed or non-OK file fails the install: the old version keeps running
+  // instead of activating a half-filled cache that breaks offline.
   e.waitUntil(
     caches.open(CACHE_NAME)
       .then(c => Promise.all(CORE.map(u =>
-        fetch(u, { cache: 'no-cache' }).then(r => { if (r.ok) return c.put(u, r); })
+        fetch(u, { cache: 'no-cache' }).then(r => {
+          if (!r.ok) throw new Error(`precache ${u}: HTTP ${r.status}`);
+          return c.put(u, r);
+        })
       )))
       .then(() => self.skipWaiting())
   );
@@ -37,18 +47,37 @@ self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// Before dropping an old cache, carry over what this version did not precache:
+// Tailwind, fonts and OCR files (cross-origin), and pdf.js files fetched on
+// demand (./lib/). Deleting them made the first launch after an update — at
+// the airport, in flight mode — open without styles. App files never carry
+// over: each version brings its own.
+async function carryOver() {
+  const fresh = await caches.open(CACHE_NAME);
+  for (const k of await caches.keys()) {
+    if (k === CACHE_NAME) continue;
+    try {
+      const old = await caches.open(k);
+      for (const req of await old.keys()) {
+        const u = new URL(req.url);
+        const keep = u.origin !== self.location.origin || u.pathname.includes('/lib/');
+        if (!keep || await fresh.match(req)) continue;
+        const res = await old.match(req);
+        if (res) await fresh.put(req, res);
+      }
+    } catch { }
+    await caches.delete(k);
+  }
+}
+
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  e.waitUntil(carryOver().then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (BYPASS.some(h => url.hostname.endsWith(h))) return;
+  if (bypassed(url.hostname)) return;
 
   // version.json: network-first so update checks always see the latest version
   if (url.origin === location.origin && url.pathname.endsWith('/version.json')) {
@@ -59,7 +88,7 @@ self.addEventListener('fetch', (e) => {
   // app shell: cache-first (version bump busts it); CDN assets: cache falling back to network
   e.respondWith(
     caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && (url.origin === location.origin || ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'].includes(url.hostname))) {
+      if (res.ok && (url.origin === location.origin || CDN_HOSTS.includes(url.hostname))) {
         const clone = res.clone();
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
       }

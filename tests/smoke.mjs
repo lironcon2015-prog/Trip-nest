@@ -507,6 +507,110 @@ await test('Gemini: דריסת רשימת מודלים + testModels', async () =
   await Gemini.setModels(Gemini.DEFAULT_MODELS.slice());
 });
 
+await test('Gemini: חסימת מיקום (FAILED_PRECONDITION) → הודעה בעברית, בלי לנסות מודל אחר', async () => {
+  gemini.behavior = { [M1]: { status: 400, apiStatus: 'FAILED_PRECONDITION', message: 'User location is not supported for the API use.' } };
+  gemini.calls = [];
+  let err = null;
+  try { await Gemini.call({ contents: [] }); } catch (e) { err = e; }
+  assert(err && err.message === Gemini.LOCATION_MSG, 'expected the location message, got: ' + err);
+  assert(gemini.calls.length === 1, 'a location block must not walk the cascade');
+});
+
+/* ---------- network resilience (bridge client) ---------- */
+const _fetch = globalThis.fetch;
+const hang = (opts) => new Promise((_, rej) => opts.signal?.addEventListener('abort',
+  () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+Object.assign(G.config, { timeoutMs: 60, longTimeoutMs: 60, retryDelayMs: 5 });
+
+await test('רשת: קריאה שנכשלה בדרך מקבלת ניסיון שקט אחד', async () => {
+  let n = 0;
+  globalThis.fetch = async (url, opts) => { if (++n === 1) throw new TypeError('fetch failed'); return _fetch(url, opts); };
+  try {
+    const out = await G.ping();
+    assert(out.email === bridgeState.email && n === 2, `expected success on the 2nd try, n=${n}`);
+  } finally { globalThis.fetch = _fetch; }
+});
+
+await test('רשת: כתיבה לא נשלחת פעמיים', async () => {
+  let n = 0;
+  globalThis.fetch = async () => { n++; throw new TypeError('fetch failed'); };
+  let err = null;
+  try { await G.call('dbPut', { folderId: 'x', db: {} }); } catch (e) { err = e; } finally { globalThis.fetch = _fetch; }
+  assert(err && n === 1, `write must be sent once, n=${n}`);
+});
+
+await test('רשת: גשר תקוע → timeout, בלי ניסיון נוסף, ונעילת הסנכרון משתחררת', async () => {
+  let n = 0;
+  globalThis.fetch = async (url, opts) => { n++; return hang(opts); };
+  try {
+    const t0 = Date.now();
+    let err = null;
+    try { await G.ping(); } catch (e) { err = e; }
+    assert(err && /לא ענה בזמן/.test(err.message) && n === 1, `expected one timed-out call, n=${n}, err=${err}`);
+    assert(Date.now() - t0 < 2000, 'timeout did not fire');
+    const r1 = await G.Sync.run({ silent: true });
+    assert(r1.error, 'stalled sync must fail, not hang');
+    globalThis.fetch = _fetch;
+    const r2 = await G.Sync.run({ silent: true });
+    assert(r2.ok && !r2.skipped, 'the sync lock must be free after a timeout');
+  } finally { globalThis.fetch = _fetch; }
+});
+Object.assign(G.config, { timeoutMs: 30000, longTimeoutMs: 120000, retryDelayMs: 1000 });
+
+/* ---------- service worker: an update keeps the offline assets ---------- */
+await test('SW: עדכון גרסה שומר Tailwind/גופנים מהמטמון הישן, לא קבצי אפליקציה', async () => {
+  const cachesMap = new Map();
+  const mkCache = () => {
+    const m = new Map();
+    return {
+      async put(req, res) { m.set(typeof req === 'string' ? new URL(req, 'https://app.test/trip-nest/').href : req.url, res); },
+      async match(req) { return m.get(typeof req === 'string' ? new URL(req, 'https://app.test/trip-nest/').href : req.url); },
+      async keys() { return [...m.keys()].map(url => ({ url })); },
+    };
+  };
+  const fakeCaches = {
+    async open(k) { if (!cachesMap.has(k)) cachesMap.set(k, mkCache()); return cachesMap.get(k); },
+    async keys() { return [...cachesMap.keys()]; },
+    async delete(k) { return cachesMap.delete(k); },
+    async match() { return undefined; },
+  };
+  const handlers = {};
+  const swSelf = {
+    location: new URL('https://app.test/trip-nest/sw.js'),
+    addEventListener: (t, fn) => { handlers[t] = fn; },
+    skipWaiting() { }, clients: { claim() { } },
+  };
+  const old = await fakeCaches.open('tripnest-0.0.1');
+  await old.put({ url: 'https://cdn.tailwindcss.com/' }, 'TAILWIND');
+  await old.put({ url: 'https://fonts.gstatic.com/rubik.woff2' }, 'FONT');
+  await old.put({ url: 'https://app.test/trip-nest/lib/pdfjs/cmaps/UniJIS.bcmap' }, 'CMAP');
+  await old.put({ url: 'https://app.test/trip-nest/index.html?source=old' }, 'OLD-SHELL');
+  const src = readFileSync(join(root, 'sw.js'), 'utf-8');
+  new Function('self', 'caches', 'fetch', 'location', src)(swSelf, fakeCaches, async () => ({ ok: true }), swSelf.location);
+  let waited;
+  handlers.activate({ waitUntil: (p) => { waited = p; } });
+  await waited;
+  const keys = await fakeCaches.keys();
+  assert(keys.length === 1 && keys[0] !== 'tripnest-0.0.1', 'old cache must be deleted, one fresh cache left');
+  const fresh = await fakeCaches.open(keys[0]);
+  assert(await fresh.match({ url: 'https://cdn.tailwindcss.com/' }) === 'TAILWIND', 'Tailwind lost on update');
+  assert(await fresh.match({ url: 'https://fonts.gstatic.com/rubik.woff2' }) === 'FONT', 'font lost on update');
+  assert(await fresh.match({ url: 'https://app.test/trip-nest/lib/pdfjs/cmaps/UniJIS.bcmap' }) === 'CMAP', 'lazy pdf.js file lost');
+  assert(!(await fresh.match({ url: 'https://app.test/trip-nest/index.html?source=old' })), 'an old app file must not carry over');
+
+  // install: a non-OK precache response fails the install (the old version keeps running)
+  const swSelf2 = { ...swSelf, addEventListener: (t, fn) => { handlers['i_' + t] = fn; } };
+  new Function('self', 'caches', 'fetch', 'location', src)(swSelf2, fakeCaches,
+    async (u) => ({ ok: !String(u).includes('app.js'), status: String(u).includes('app.js') ? 404 : 200 }), swSelf.location);
+  let inst;
+  handlers.i_install({ waitUntil: (p) => { inst = p; } });
+  let failed = false;
+  try { await inst; } catch { failed = true; }
+  assert(failed, 'install must fail when a core file is not OK');
+  // fonts.googleapis.com is cacheable again (the bypass no longer swallows it)
+  assert(!/const BYPASS = \[[^\]]*'googleapis\.com'/.test(src), 'bare googleapis.com must not be in BYPASS');
+});
+
 /* ---------- MRZ (ICAO 9303 TD3 specimen) ---------- */
 await test('MRZ: פענוח דוגמת התקן הרשמית', async () => {
   const p = MRZ.parse([
@@ -539,6 +643,17 @@ const _uiStub = globalThis.UI;
 (0, eval)(readFileSync(join(root, 'js/ui.js'), 'utf-8'));
 const UIm = globalThis.UI;
 globalThis.UI = _uiStub; // keep the rest of the suite on its stub
+
+await test('ספירה לאחור: לילה של מעבר שעון חורף לא מוסיף יום (ישראל, ניו יורק)', async () => {
+  const tz = process.env.TZ;
+  try {
+    process.env.TZ = 'Asia/Jerusalem';
+    assert(UIm.daysBetween('2026-10-24', '2026-10-26') === 2, 'IL fall-back: expected 2');
+    assert(UIm.daysBetween('2026-03-20', '2026-03-27') === 7, 'IL spring-forward: expected 7');
+    process.env.TZ = 'America/New_York';
+    assert(UIm.daysBetween('2026-10-31', '2026-11-02') === 2, 'NY fall-back: expected 2');
+  } finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; }
+});
 
 await test('המרה לשקלים: שער מוגדר, ₪ עובר כמו שהוא, וללא שער → null', async () => {
   const rates = { '€': 4.1, '$': 3.7 };

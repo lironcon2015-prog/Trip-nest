@@ -25,13 +25,32 @@ const Gemini = (() => {
   }
   const setModels = (list) => DB.settings.set('geminiModels', list);
 
+  // a stalled network must not freeze the agent; tests shrink it
+  const config = { timeoutMs: 90000 };
+
   // API key travels in a header, not the query string — URLs get logged
   // by proxies/CDNs; headers don't.
-  const post = async (model, apiKey, payload) => fetch(`${API}/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(payload),
-  });
+  async function post(model, apiKey, payload) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), config.timeoutMs);
+    try {
+      return await fetch(`${API}/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw new Error(e?.name === 'AbortError' ? 'ה-AI לא ענה בזמן — נסו שוב' : 'אין חיבור ל-AI — בדקו את הרשת');
+    } finally { clearTimeout(timer); }
+  }
+
+  // Gemini refuses by the caller's IP: Hong Kong, Macau, China, Russia and more —
+  // and a travel eSIM can surface in one of them while you stand in Thailand.
+  // Retrying another model can't help; say what happened instead of a raw error.
+  const LOCATION_MSG = 'ה-AI לא זמין מהמקום שממנו הרשת שלכם יוצאת לאינטרנט (למשל הונג קונג או סין). נסו רשת אחרת, או חברו את האפליקציה לשרת Navigo בהגדרות.';
+  const isLocationBlock = (data) => data?.error?.status === 'FAILED_PRECONDITION'
+    && /location/i.test(data?.error?.message || '');
 
   async function call(payload) {
     const apiKey = await key();
@@ -41,6 +60,7 @@ const Gemini = (() => {
       let data = null;
       try { data = await res.json(); } catch { }
       if (res.ok && data) return data;
+      if (isLocationBlock(data)) throw new Error(LOCATION_MSG);
       const msg = data?.error?.message || `שגיאת API (HTTP ${res.status})`;
       const status = data?.error?.status || '';
       const shouldFallback = res.status === 429 || res.status === 503 || res.status === 404
@@ -64,7 +84,7 @@ const Gemini = (() => {
         if (res.ok && data) {
           results.push({ model, ok: true, ms, reply: data.candidates?.[0]?.content?.parts?.[0]?.text || '' });
         } else {
-          results.push({ model, ok: false, ms, error: data?.error?.message || `HTTP ${res.status}` });
+          results.push({ model, ok: false, ms, error: isLocationBlock(data) ? LOCATION_MSG : (data?.error?.message || `HTTP ${res.status}`) });
         }
       } catch (e) {
         results.push({ model, ok: false, ms: Math.round(performance.now() - startedAt), error: e.message || 'Network error' });
@@ -128,6 +148,6 @@ expenseCategory = על מה התשלום (למשל קבלה ממסעדה → foo
       { inlineData: { mimeType: blob.type || 'image/jpeg', data: base64 } });
   }
 
-  return { call, chat, json, textOf, hasKey, extractFromText, extractFromImage, models, setModels, testModels, DEFAULT_MODELS };
+  return { call, chat, json, textOf, hasKey, extractFromText, extractFromImage, models, setModels, testModels, config, DEFAULT_MODELS, LOCATION_MSG };
 })();
 window.Gemini = Gemini;

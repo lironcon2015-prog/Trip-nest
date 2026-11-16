@@ -261,7 +261,7 @@ const Agent = (() => {
         return {
           ok: true,
           results: hits.map(h => ({
-            date: new Date(h.ts).toISOString().slice(0, 10),
+            date: dayKey(h.ts), // local day — toISOString was UTC, a day off at night
             role: h.role === 'user' ? 'family' : 'agent',
             text: String(h.text).slice(0, 500),
           })),

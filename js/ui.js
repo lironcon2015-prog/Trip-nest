@@ -129,7 +129,10 @@ const UI = (() => {
       return `${da.getDate()}–${db_.getDate()} ב${MONTHS[da.getMonth()]} ${da.getFullYear()}`;
     return `${da.getDate()} ${MONTHS_S[da.getMonth()]} – ${db_.getDate()} ${MONTHS_S[db_.getMonth()]} ${db_.getFullYear()}`;
   }
-  const daysUntil = (iso) => Math.ceil((toDate(iso) - toDate(todayISO())) / 86400000);
+  // round, not ceil: across the night the clock falls back, midnight-to-midnight
+  // is 25 h, and ceil turned "in 2 days" into 3
+  const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000);
+  const daysUntil = (iso) => daysBetween(todayISO(), iso);
   function age(birthISO) {
     if (!birthISO) return null;
     const b = toDate(birthISO), n = new Date();
@@ -529,7 +532,7 @@ const UI = (() => {
 
   return {
     esc, toast, openModal, closeModal, confirm: confirmDialog, viewer, pdfText, docMime,
-    fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, age, todayISO, toDate, fmtMoney,
+    fmtDate, fmtDateShort, fmtDateRange, fmtDayHeader, daysUntil, daysBetween, age, todayISO, toDate, fmtMoney,
     fileToDataURL, cropAvatar, avatarHTML, emptyState, spinner, busy, PDF_OPTS,
     DOC_CATEGORIES, cat, EVENT_TYPES, eventType, MONTHS, MONTHS_S, init, icon, ICONS,
     EXPENSE_CATEGORIES, expCat, CURRENCIES, normCur, toILS, expenseTotals,
