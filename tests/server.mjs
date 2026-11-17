@@ -269,6 +269,23 @@ if (!Miniflare) {
       gemini.G.behavior = {};
     });
 
+    await test('Gemini through the US relay: same answer, same status, and a hang is still 503', async () => {
+      gemini.G.byKey = {}; gemini.G.behavior = {}; gemini.G.calls = [];
+      let r = await call({ action: 'ai', deviceKey: A, model: 'm-us', egress: 'us' }, '{"contents":[]}');
+      assert.equal(r.result.status, 200);
+      assert.match(r.result.body.candidates[0].content.parts[0].text, /^ok:m-us:/);
+      assert.equal(gemini.G.calls.at(-1).body, '{"contents":[]}');
+      gemini.G.behavior = { 'm-us2': { status: 429, apiStatus: 'RESOURCE_EXHAUSTED' } };
+      r = await call({ action: 'ai', deviceKey: A, model: 'm-us2', egress: 'us' }, '{"contents":[]}');
+      assert.equal(r.result.status, 429);
+      gemini.G.behavior = { 'm-us3': { status: 200, delayMs: 9500 } };
+      r = await call({ action: 'ai', deviceKey: A, model: 'm-us3', egress: 'us' }, '{"contents":[]}');
+      assert.equal(r.result.status, 503);
+      gemini.G.behavior = {};
+      const out = await mf.dispatchFetch('https://egress/gemini', { method: 'POST', body: '{}', headers: { 'x-navigo-model': 'x' } });
+      assert.equal(out.status, 404, 'the relay must not be reachable from outside');
+    });
+
     await test('Gmail: one search covers both mailboxes, ids carry the mailbox, reads go to the right bridge', async () => {
       const r = await call({ action: 'gmailSearch', deviceKey: B, q: 'label:navigo', max: 25, label: 'navigo' });
       assert.deepEqual(r.result.messages.map((m) => m.id).sort(), ['liron@example.com/msg-1', 'partner@example.com/pmsg-1']);

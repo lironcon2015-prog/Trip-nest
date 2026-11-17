@@ -163,6 +163,7 @@ export class Family extends DurableObject {
     const url = new URL(request.url);
     if (url.pathname === '/live') return this.live(request);
     if (url.pathname === '/backup') return this.backup();
+    if (url.hostname === 'egress' && url.pathname === '/gemini') return this.egress(request);
     if (request.method === 'GET') return ok({ service: 'navigo', server: 'cloudflare', version: VERSION });
     if (request.method !== 'POST') return fail('שיטה לא נתמכת', 'method', 405);
     if (Number(request.headers.get('content-length') || 0) > MAX_BODY) return fail('הקובץ גדול מדי לשרת', 'too_big', 413);
@@ -429,22 +430,56 @@ export class Family extends DurableObject {
     if (!payload) throw new Refusal('בקשה ריקה ל-AI', 'bad_request');
     const keys = this.secrets('gemini:');
     if (!keys.length) throw new Refusal('לשרת אין מפתח Gemini — חברו מכשיר שיש בו מפתח', 'not_configured');
-    return keepAlive(() => this.gemini(keys, model, payload));
+    // where the call to Gemini leaves from: 'us' (a second object pinned to the US)
+    // or 'eu' (this object). A request may pick one, for comparing the two.
+    const via = ['us', 'eu'].includes(req.egress) ? req.egress : (this.env.GEMINI_EGRESS || 'eu');
+    return keepAlive(() => this.gemini(keys, model, payload, via));
   }
 
-  async gemini(keys, model, payload) {
+  // the Gemini call itself, from the chosen place; a network failure or timeout throws
+  async geminiFetch(key, model, payload, via) {
+    const ms = Number(this.env.AI_TIMEOUT_MS) || AI_MS;
+    if (via !== 'us') {
+      return fetch(GEMINI + model + ':generateContent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: payload, signal: AbortSignal.timeout(ms),
+      });
+    }
+    const stub = this.env.FAMILY.get(this.env.FAMILY.idFromName('egress-us'), { locationHint: 'enam' });
+    const res = await stub.fetch('https://egress/gemini', {
+      method: 'POST', body: payload,
+      headers: { 'x-navigo-key': key, 'x-navigo-model': model, 'x-navigo-ms': String(ms) },
+    });
+    if (res.status === 599) throw new Error('egress: no answer');
+    return res;
+  }
+
+  // a second object of this class, created near the US, that only relays Gemini calls.
+  // Reachable from the family object alone: the Worker routes nothing to 'egress'.
+  async egress(request) {
+    const model = request.headers.get('x-navigo-model') || '';
+    if (!/^[\w.-]{1,80}$/.test(model)) return new Response('bad model', { status: 400 });
+    try {
+      const res = await fetch(GEMINI + model + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': request.headers.get('x-navigo-key') || '' },
+        body: await request.text(),
+        signal: AbortSignal.timeout(Number(request.headers.get('x-navigo-ms')) || AI_MS),
+      });
+      return new Response(await res.text(), { status: res.status });
+    } catch {
+      return new Response('', { status: 599 });
+    }
+  }
+
+  async gemini(keys, model, payload, via) {
     const start = Number(this.kv('gemini_next') || 0) % keys.length;
     let last = null;
     for (let i = 0; i < keys.length; i++) {
       const key = keys[(start + i) % keys.length];
       let res;
       try {
-        res = await fetch(GEMINI + model + ':generateContent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          body: payload,
-          signal: AbortSignal.timeout(Number(this.env.AI_TIMEOUT_MS) || AI_MS),
-        });
+        res = await this.geminiFetch(key, model, payload, via);
       } catch {
         // a model that hangs (or a dropped call) is reported as unavailable, not as a
         // failure: the app's cascade then moves on to the next model
