@@ -72,18 +72,21 @@ const Server = (() => {
   }
 
   // the way around: the same body, handed to a Google bridge that passes it on
-  async function around(body, ms) {
-    let last = new ServerError('אין חיבור לשרת — בדקו את הרשת', 'network');
-    for (const route of (state && state.routes) || []) {
+  // bridges from before v1.5.0 have no forward: they answer 'bad token'. Such a
+  // route is skipped for the rest of the session, and its refusal is never shown —
+  // the phone's real problem is the original one (no connection to the server).
+  const noForward = new Set();
+  const usableRoutes = () => ((state && state.routes) || []).filter((r) => !noForward.has(r));
+  async function around(body, ms, cause) {
+    for (const route of usableRoutes()) {
       try {
         return await attempt(route, JSON.stringify({ forward: body }), ms + 15000);
       } catch (e) {
-        // a bridge from before v1.5.0 has no forward and answers 'bad token' — try the next
-        if (e.code === 'refused' && /bad token|unknown action/.test(e.message)) { last = e; continue; }
+        if (e.code === 'refused' && /bad token|unknown action/.test(e.message)) { noForward.add(route); continue; }
         throw e;
       }
     }
-    throw last;
+    throw cause || new ServerError('אין חיבור לשרת — בדקו את הרשת', 'network');
   }
 
   async function setVia(until) {
@@ -100,7 +103,7 @@ const Server = (() => {
     const body = JSON.stringify({ action, deviceKey, appVersion: window._BUNDLE_VERSION || '', ...params })
       + (payload == null ? '' : '\n' + payload);
     const ms = timeout || (LONG.has(action) ? config.longTimeoutMs : config.timeoutMs);
-    const hasRoutes = !!(state && state.routes && state.routes.length);
+    const hasRoutes = usableRoutes().length > 0;
     if (goingAround() && hasRoutes) {
       try { return await around(body, ms); } catch (e) { if (e.code !== 'network') throw e; await setVia(0); }
     }
@@ -111,7 +114,7 @@ const Server = (() => {
     } catch (e) {
       // the server never answered: maybe this network blocks it — ask through Google
       if (e.code === 'network' && !e.timeout && hasRoutes) {
-        const out = await around(body, ms);
+        const out = await around(body, ms, e);
         await setVia(Date.now() + config.viaMs);
         return out;
       }

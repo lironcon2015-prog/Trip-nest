@@ -337,6 +337,16 @@ try {
     assert.equal((await A.DB.get('trips', 'trip-only-c'))?.name, 'אילת');
     C.document.visibilityState = 'hidden'; C.document.dispatchEvent({ type: 'visibilitychange' });
   });
+  await test('a blocked server and only old bridges (no forward): the real error, never "bad token"', async () => {
+    const saved = [liron.S.forwardTo, partner.S.forwardTo];
+    liron.S.forwardTo = null; partner.S.forwardTo = null; // bridges before v1.5.0
+    A.blocked = true;
+    try {
+      const r = await A.G.Sync.run({ silent: true });
+      assert.equal(r.code, 'network', JSON.stringify(r));
+      assert.ok(!/bad token/.test(r.error), 'the old bridge refusal must not reach the user: ' + r.error);
+    } finally { A.blocked = false; [liron.S.forwardTo, partner.S.forwardTo] = saved; }
+  });
 } finally {
   for (const p of [A, B]) { try { p.document.visibilityState = 'hidden'; p.document.dispatchEvent({ type: 'visibilitychange' }); } catch { } }
   await mf.dispose();
