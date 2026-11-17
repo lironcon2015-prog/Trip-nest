@@ -40,7 +40,7 @@ const PAIR_TTL = 10 * 60 * 1000;
 const FAILS_MAX = 8;
 const FAILS_WINDOW = 15 * 60 * 1000;
 const FETCH_MS = 60000;
-const AI_MS = 60000; // a model silent longer than this counts as unavailable
+const AI_MS = 35000; // a model silent longer than this counts as unavailable — the cascade moves on
 const FILE_MS = 120000;
 const MAX_SOCKETS = 40;
 // a waiting answer sends a space this often: a cellular network cuts a request

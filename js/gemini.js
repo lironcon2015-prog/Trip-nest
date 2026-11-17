@@ -78,8 +78,8 @@ const Gemini = (() => {
     const server = viaServer();
     if (server && !Server.caps().gemini) throw new Error('לשרת אין מפתח Gemini — הזינו מפתח ושמרו');
     const apiKey = server ? null : await key();
-    const results = [];
-    for (const model of await models()) {
+    // all models at once: one that hangs no longer holds up the rest of the report
+    const one = async (model) => {
       const startedAt = performance.now();
       try {
         const payload = { contents: [{ parts: [{ text: promptText }] }] };
@@ -87,16 +87,13 @@ const Gemini = (() => {
         let data = null;
         try { data = await res.json(); } catch { }
         const ms = Math.round(performance.now() - startedAt);
-        if (res.ok && data) {
-          results.push({ model, ok: true, ms, reply: data.candidates?.[0]?.content?.parts?.[0]?.text || '' });
-        } else {
-          results.push({ model, ok: false, ms, error: isLocationBlock(data) ? LOCATION_MSG : (data?.error?.message || `HTTP ${res.status}`) });
-        }
+        if (res.ok && data) return { model, ok: true, ms, reply: data.candidates?.[0]?.content?.parts?.[0]?.text || '' };
+        return { model, ok: false, ms, error: isLocationBlock(data) ? LOCATION_MSG : (data?.error?.message || `HTTP ${res.status}`) };
       } catch (e) {
-        results.push({ model, ok: false, ms: Math.round(performance.now() - startedAt), error: e.message || 'Network error' });
+        return { model, ok: false, ms: Math.round(performance.now() - startedAt), error: e.message || 'Network error' };
       }
-    }
-    return results;
+    };
+    return Promise.all((await models()).map(one));
   }
 
   const textOf = (data) =>
