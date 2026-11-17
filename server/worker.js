@@ -40,7 +40,7 @@ const PAIR_TTL = 10 * 60 * 1000;
 const FAILS_MAX = 8;
 const FAILS_WINDOW = 15 * 60 * 1000;
 const FETCH_MS = 60000;
-const AI_MS = 100000;
+const AI_MS = 60000; // a model silent longer than this counts as unavailable
 const FILE_MS = 120000;
 const MAX_SOCKETS = 40;
 // a waiting answer sends a space this often: a cellular network cuts a request
@@ -443,10 +443,13 @@ export class Family extends DurableObject {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: payload,
-          signal: AbortSignal.timeout(AI_MS),
+          signal: AbortSignal.timeout(Number(this.env.AI_TIMEOUT_MS) || AI_MS),
         });
       } catch {
-        throw new Refusal('ה-AI לא ענה — נסו שוב', 'upstream');
+        // a model that hangs (or a dropped call) is reported as unavailable, not as a
+        // failure: the app's cascade then moves on to the next model
+        const body = { error: { code: 503, status: 'UNAVAILABLE', message: `המודל ${model} לא ענה בזמן` } };
+        return '{"ok":true,"result":{"status":503,"body":' + JSON.stringify(body) + '}}';
       }
       const text = await res.text();
       let body = null;

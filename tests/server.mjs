@@ -58,7 +58,7 @@ if (!Miniflare) {
     modulesRoot: join(ROOT, 'server'),
     compatibilityDate: '2026-07-01',
     durableObjects: { FAMILY: { className: 'Family', useSQLite: true } },
-    bindings: { FAMILY_CODE },
+    bindings: { FAMILY_CODE, AI_TIMEOUT_MS: '8000' },
     outboundService: async (req) => {
       const body = req.method === 'POST' ? await req.text() : '';
       outbound.push({ url: req.url, body });
@@ -257,6 +257,15 @@ if (!Miniflare) {
       assert.equal(r.status, 200);
       assert.match(text, /^ +\{/, 'expected keep-alive spaces before the JSON');
       assert.equal(JSON.parse(text).result.body.candidates[0].content.parts[0].text, 'late');
+      gemini.G.behavior = {};
+    });
+
+    await test('Gemini: a model that hangs is reported unavailable (503), so the cascade moves on', async () => {
+      gemini.G.byKey = {}; gemini.G.behavior = { hang: { status: 200, delayMs: 9500 } };
+      const r = await call({ action: 'ai', deviceKey: A, model: 'hang' }, '{"contents":[]}');
+      assert.equal(r.ok, true, r.error);
+      assert.equal(r.result.status, 503);
+      assert.equal(r.result.body.error.status, 'UNAVAILABLE');
       gemini.G.behavior = {};
     });
 
