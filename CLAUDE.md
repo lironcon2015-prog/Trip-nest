@@ -11,6 +11,10 @@
 
 # הנחיות לפרויקט TripNest — "Navigo" (PWA לניהול חופשות משפחתיות)
 
+## שפה
+
+כל התקשורת עם בעל הריפו בצ'אט — **בעברית בלבד, תמיד**: תשובות, סיכומים, תוכניות והסברים, גם ארוכים. קוד, הודעות קומיט ושמות טכניים — כמו שהם.
+
 ## Git workflow
 
 - **לפני כל עבודה — סנכרון מול `origin/main`, תמיד.** ה-clone/branch שהסביבה מספקת עלול להיות snapshot ישן. צעד ראשון בכל משימה: `git fetch origin main` ובניית branch העבודה מ-`origin/main` (`git checkout -B <branch> origin/main`, או rebase אם יש כבר קומיטים). אימות: `git merge-base HEAD origin/main` שווה ל-`origin/main`, וה-`version.json` המקומי זהה לזה שב-`git show origin/main:version.json`. **אסור לערוך קבצים או להקפיץ גרסה לפני האימות הזה.**
