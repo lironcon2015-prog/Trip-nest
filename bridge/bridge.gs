@@ -1,27 +1,37 @@
-/* TripNest — Google Apps Script bridge  (v1.5.0)
+/* TripNest — Google Apps Script bridge  (v1.6.0)
    ------------------------------------------------
    הגשר רץ בחשבון Google שלכם ומחליף את OAuth/Cloud Console:
    האפליקציה שולחת אליו בקשות, והוא ניגש ל-Drive ול-Gmail בשמכם.
 
+   הקובץ מודבק תמיד כמו שהוא, בלי לערוך בו כלום: הטוקן הסודי לא כתוב בקוד
+   (הקובץ בריפו ציבורי) — הוא שמור בהגדרות הפרויקט, Script properties ← SECRET_TOKEN.
+
    הקמה (כ-5 דקות, כל אחד מבני הזוג בחשבון שלו):
    1. היכנסו ל-https://script.new (מחוברים לחשבון ה-Gmail הנכון).
    2. מחקו את התוכן והדביקו את הקובץ הזה במלואו.
-   3. החליפו את SECRET_TOKEN למחרוזת סודית משלכם (שני בני הזוג — אותו טוקן או שונה, לא משנה).
+   3. בתפריט הפונקציות בוחרים newToken ← Run ← מאשרים הרשאות. ביומן מופיעה שורה
+      "SECRET_TOKEN (להדביק בהגדרות האפליקציה): …" — הטוקן כבר שמור בגשר.
    4. Deploy → New deployment → Type: Web app →
       Execute as: Me · Who has access: Anyone → Deploy → אשרו הרשאות.
    5. העתיקו את כתובת ה-Web app (מסתיימת ב-/exec) — אותה מדביקים בהגדרות האפליקציה יחד עם הטוקן.
 
-   עדכון גרסה: הדביקו קוד חדש → Deploy → Manage deployments → Edit → Version: New → Deploy.
+   עדכון גרסה: מדביקים את הקובץ החדש כמו שהוא → Deploy → Manage deployments → Edit →
+   Version: New → Deploy. הטוקן נשאר ב-Script properties ולא נוגעים בו.
+
+   מעבר מגרסה עד 1.5.0, שבה הטוקן היה כתוב בקוד — פעם אחת בלבד:
+   לפני ההדבקה מעתיקים את הטוקן מהשורה const SECRET_TOKEN = '…' שבקוד הישן ←
+   Project Settings (גלגל השיניים) ← Script properties ← Add script property ←
+   Property: SECRET_TOKEN · Value: הטוקן ← Save script properties. אחר כך מדביקים.
+   (הטוקן לא משתנה, ולכן הטלפונים והשרת ממשיכים לעבוד בלי שינוי.)
 
    v1.5.0 — מסלול עקיפה לשרת Navigo: רשת שחוסמת את השרת (סלולרי, מלון) עדיין
-   מגיעה לגוגל, והגשר מעביר את הבקשה לשרת מצד גוגל (forward). אחרי ההדבקה:
-   בעורך בוחרים testForward ← Run ← מאשרים הרשאה (גישה לרשת חיצונית) — ורק
-   אז Deploy → Manage deployments → Edit → Version: New → Deploy.
+   מגיעה לגוגל, והגשר מעביר את הבקשה לשרת מצד גוגל (forward). בפעם הראשונה:
+   בעורך בוחרים testForward ← Run ← מאשרים הרשאה (גישה לרשת חיצונית).
 */
 
-const SECRET_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
-
-const BRIDGE_VERSION = '1.5.0';
+const BRIDGE_VERSION = '1.6.0';
+// the default that older versions shipped in the code — public, so never a valid token
+const PLACEHOLDER_TOKEN = 'CHANGE-ME-to-a-long-random-secret';
 // the Navigo server on Cloudflare (server/worker.js) — the only address forward calls
 const SERVER_URL = 'https://navigo.lironcon.com';
 const DB_FILE = 'tripnest-db.json';
@@ -31,8 +41,8 @@ const TRIP_MARKER = 'tripnest-trip:'; // + tripId, בתיאור של תת-התי
 /* ---------- entry points ---------- */
 
 function doGet() {
-  // בדיקה ידנית בדפדפן — בלי טוקן, בלי מידע רגיש
-  return _json({ ok: true, service: 'TripNest bridge', version: BRIDGE_VERSION });
+  // בדיקה ידנית בדפדפן — בלי טוקן, בלי מידע רגיש. installed: האם יש טוקן ב-Script properties
+  return _json({ ok: true, service: 'TripNest bridge', version: BRIDGE_VERSION, installed: !!_secretToken() });
 }
 
 function doPost(e) {
@@ -45,7 +55,11 @@ function doPost(e) {
   // and SERVER_URL is the only address this ever calls.
   if (req.forward != null) return _forward(req.forward);
 
-  if (!req.token || req.token !== SECRET_TOKEN) {
+  const token = _secretToken();
+  if (!token) {
+    return _json({ ok: false, error: 'הגשר לא הותקן: חסר SECRET_TOKEN ב-Script properties (או הריצו newToken בעורך)', code: 'setup' });
+  }
+  if (!req.token || !_sameText(req.token, token)) {
     return _json({ ok: false, error: 'bad token' });
   }
 
@@ -318,6 +332,43 @@ function _forward(body) {
 function testForward() {
   const res = UrlFetchApp.fetch(SERVER_URL + '/', { muteHttpExceptions: true });
   Logger.log('השרת ענה (' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 200));
+}
+
+/* ---------- the token (Script properties, never the code) ---------- */
+
+function _secretToken() {
+  const t = String(PropertiesService.getScriptProperties().getProperty('SECRET_TOKEN') || '').trim();
+  return t && t !== PLACEHOLDER_TOKEN ? t : '';
+}
+
+// constant time: the answer's timing must not tell how much of a guess was right
+function _sameText(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
+// a new bridge: run once from the editor — creates a long random token, keeps it in
+// Script properties and logs it once, for the app's settings. It never replaces a
+// token that exists: the phones and the Navigo server already use it (showToken).
+function newToken() {
+  const existing = _secretToken();
+  if (existing) {
+    Logger.log('כבר יש טוקן בגשר — לא נוצר חדש. showToken מציג אותו.');
+    return existing;
+  }
+  const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('SECRET_TOKEN', token);
+  Logger.log('SECRET_TOKEN (להדביק בהגדרות האפליקציה): ' + token);
+  return token;
+}
+
+// the token in the log — to set up a phone before it connects to the server
+function showToken() {
+  const t = _secretToken();
+  Logger.log(t ? 'SECRET_TOKEN: ' + t : 'אין טוקן בגשר — הריצו newToken');
+  return t;
 }
 
 /* ---------- utils ---------- */

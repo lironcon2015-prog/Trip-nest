@@ -712,5 +712,51 @@ await test('סיכום הוצאות: המיר נכנס לסה״כ, לא-המיר
   assert(t.hasLeftover && t.leftover['£'] === 5, 'unconvertible £5 must stay in leftover');
 });
 
+/* ---------- bridge.gs itself: the token lives in Script properties, never in the code ---------- */
+const gasProps = new Map();
+const gasLog = [];
+const gas = {
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (gasProps.has(k) ? gasProps.get(k) : null), setProperty: (k, v) => gasProps.set(k, String(v)) }) },
+  ContentService: { createTextOutput: (text) => ({ text, setMimeType() { return this; } }), MimeType: { JSON: 'json' } },
+  Utilities: { getUuid: () => crypto.randomUUID() },
+  Logger: { log: (m) => gasLog.push(String(m)) },
+  Session: { getEffectiveUser: () => ({ getEmail: () => 'liron@example.com' }), getActiveUser: () => ({ getEmail: () => '' }) },
+  UrlFetchApp: { fetch: (url, o) => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ ok: true, result: { via: url, body: o.payload } }) }) },
+};
+const bridgeSrc = readFileSync(join(root, 'bridge/bridge.gs'), 'utf-8');
+const GAS = new Function(...Object.keys(gas), bridgeSrc + '\nreturn { doGet, doPost, newToken, showToken };')(...Object.values(gas));
+const gasPost = (body) => JSON.parse(GAS.doPost({ postData: { contents: JSON.stringify(body) } }).text);
+
+await test('גשר: הטוקן לא כתוב בקוד — מדביקים את הקובץ כמו שהוא', async () => {
+  assert(!/^\s*(const|let|var)\s+SECRET_TOKEN\s*=/m.test(bridgeSrc), 'a token constant must not be in the code'); // the header may quote the old line
+});
+
+await test('גשר בלי טוקן מותקן: מסרב עם הודעת התקנה ברורה, וה-forward עדיין עובד', async () => {
+  gasProps.clear();
+  const r = gasPost({ token: 'anything', action: 'ping' });
+  assert(!r.ok && r.code === 'setup' && /Script properties/.test(r.error), 'expected a setup error, got ' + JSON.stringify(r));
+  assert(JSON.parse(GAS.doGet().text).installed === false, 'doGet must say it is not installed');
+  const f = gasPost({ forward: '{"action":"hello"}' });
+  assert(f.ok && f.result.body === '{"action":"hello"}', 'forward needs no token');
+});
+
+await test('גשר: newToken יוצר טוקן ארוך, שומר ב-Script properties, ולא מחליף טוקן קיים', async () => {
+  gasProps.clear(); gasLog.length = 0;
+  const t = GAS.newToken();
+  assert(/^[0-9a-f]{64}$/.test(t) && gasProps.get('SECRET_TOKEN') === t, 'token not stored');
+  assert(gasLog.some((l) => l.includes(t)), 'token must be logged once for the app');
+  assert(GAS.newToken() === t && gasProps.get('SECRET_TOKEN') === t, 'an existing token must never be replaced');
+  assert(gasPost({ token: t, action: 'ping' }).email === 'liron@example.com', 'the stored token must open the bridge');
+  assert(gasPost({ token: t + 'x', action: 'ping' }).error === 'bad token', 'a wrong token must be refused');
+  assert(JSON.parse(GAS.doGet().text).installed === true && !GAS.doGet().text.includes(t), 'doGet: installed, without the token');
+});
+
+await test('גשר: טוקן שהועבר מהקוד הישן ממשיך לעבוד; ברירת המחדל הציבורית נדחית', async () => {
+  gasProps.set('SECRET_TOKEN', '  my-old-token-from-the-code  ');
+  assert(gasPost({ token: 'my-old-token-from-the-code', action: 'ping' }).ok, 'a migrated token (spaces trimmed) must work');
+  gasProps.set('SECRET_TOKEN', 'CHANGE-ME-to-a-long-random-secret');
+  assert(gasPost({ token: 'CHANGE-ME-to-a-long-random-secret', action: 'ping' }).code === 'setup', 'the public placeholder is not a token');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
