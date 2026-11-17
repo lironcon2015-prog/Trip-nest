@@ -43,6 +43,9 @@ const FETCH_MS = 60000;
 const AI_MS = 100000;
 const FILE_MS = 120000;
 const MAX_SOCKETS = 40;
+// a waiting answer sends a space this often: a cellular network cuts a request
+// that stays silent too long (seen: 25 s), and JSON allows leading whitespace
+const KEEPALIVE_MS = 5000;
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const BRIDGE_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 const CODE_ABC = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // no 0/O, 1/I — read aloud, typed by hand
@@ -82,6 +85,24 @@ function sameText(a, b) { // no early exit on the first difference
 }
 const clip = (s, n) => String(s == null ? '' : s).slice(0, n);
 const normCode = (s) => String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+
+// The answer of a slow job, streamed: a space every KEEPALIVE_MS until the JSON is
+// ready. Always HTTP 200 — a failure goes inside the JSON, as everywhere else.
+function keepAlive(job) {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const enc = new TextEncoder();
+  const tick = setInterval(() => { writer.write(enc.encode(' ')).catch(() => { }); }, KEEPALIVE_MS);
+  (async () => {
+    let text;
+    try { text = await job(); } catch (e) {
+      text = JSON.stringify(e instanceof Refusal ? { ok: false, error: e.message, code: e.code } : { ok: false, error: 'שגיאה בשרת', code: 'server' });
+      if (!(e instanceof Refusal)) console.error('navigo keepAlive', (e && e.stack) || e);
+    } finally { clearInterval(tick); }
+    try { await writer.write(enc.encode(text)); await writer.close(); } catch { /* the phone left */ }
+  })();
+  return new Response(readable, { headers });
+}
 
 const family = (env) => env.FAMILY.get(env.FAMILY.idFromName('family'), { locationHint: 'weur' });
 
@@ -408,6 +429,10 @@ export class Family extends DurableObject {
     if (!payload) throw new Refusal('בקשה ריקה ל-AI', 'bad_request');
     const keys = this.secrets('gemini:');
     if (!keys.length) throw new Refusal('לשרת אין מפתח Gemini — חברו מכשיר שיש בו מפתח', 'not_configured');
+    return keepAlive(() => this.gemini(keys, model, payload));
+  }
+
+  async gemini(keys, model, payload) {
     const start = Number(this.kv('gemini_next') || 0) % keys.length;
     let last = null;
     for (let i = 0; i < keys.length; i++) {
@@ -432,7 +457,7 @@ export class Family extends DurableObject {
       if (!exhausted) break;
       this.setKv('gemini_next', (start + i + 1) % keys.length);
     }
-    return raw('{"ok":true,"result":{"status":' + last.status + ',"body":' + last.text + '}}');
+    return '{"ok":true,"result":{"status":' + last.status + ',"body":' + last.text + '}}';
   }
 
   /* ---------- the Google bridges ---------- */

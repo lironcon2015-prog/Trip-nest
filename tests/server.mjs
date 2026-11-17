@@ -250,6 +250,16 @@ if (!Miniflare) {
       assert.equal(r.result.body, null);
     });
 
+    await test('Gemini: a slow answer keeps the line alive with spaces, then the JSON', async () => {
+      gemini.G.byKey = {}; gemini.G.behavior = { slow: { status: 200, delayMs: 6500, reply: 'late' } };
+      const r = await mf.dispatchFetch('https://navigo.test/', { method: 'POST', body: JSON.stringify({ action: 'ai', deviceKey: A, model: 'slow' }) + '\n{"contents":[]}' });
+      const text = await r.text();
+      assert.equal(r.status, 200);
+      assert.match(text, /^ +\{/, 'expected keep-alive spaces before the JSON');
+      assert.equal(JSON.parse(text).result.body.candidates[0].content.parts[0].text, 'late');
+      gemini.G.behavior = {};
+    });
+
     await test('Gmail: one search covers both mailboxes, ids carry the mailbox, reads go to the right bridge', async () => {
       const r = await call({ action: 'gmailSearch', deviceKey: B, q: 'label:navigo', max: 25, label: 'navigo' });
       assert.deepEqual(r.result.messages.map((m) => m.id).sort(), ['liron@example.com/msg-1', 'partner@example.com/pmsg-1']);

@@ -96,6 +96,7 @@ export function createGemini() {
     const key = headers['x-goog-api-key'];
     G.calls.push({ model, key, url: String(url), body: bodyText });
     const b = G.byKey[key] || G.behavior[model] || { status: 200 };
+    if (b.delayMs) await new Promise((r) => setTimeout(r, b.delayMs));
     if (b.status === 200) {
       return { status: 200, text: JSON.stringify({ candidates: [{ content: { parts: [{ text: b.reply || `ok:${model}:${key}` }] } }] }) };
     }
